@@ -239,16 +239,44 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
         var dialog = Plugin.GameGui.GetAddonByName("SelectYesno");
         if (agent == null || dialog.IsNull || !dialog.IsReady || !dialog.IsVisible) return;
         var module = RaptureAtkModule.Instance();
-        var owned = module != null && module->AddonCallbackMapping.TryGetValue(dialog.Id, out var callback, false)
-            && (nint)callback.EventInterface == (nint)agent;
+        nint handler = 0;
+        ulong eventKind = 0;
+        if (module != null && module->AddonCallbackMapping.TryGetValue(dialog.Id, out var callback, false))
+        {
+            handler = (nint)callback.EventInterface;
+            eventKind = callback.EventKind;
+        }
+        var owned = handler == (nint)agent;
         var yesno = (AddonSelectYesno*)dialog.Address;
         var prompt = yesno->PromptText == null ? "" : SeString.Parse(yesno->PromptText->NodeText.AsSpan()).TextValue;
         var name = Plugin.Data.GetExcelSheet<Lumina.Excel.Sheets.Item>().GetRow(target.ItemId).Name.ExtractText();
+        var valid = ValidRestored(target);
+        var protectedNq = Registered(target.ItemId, false);
         if (!QualityNormalizationPolicy.CanConfirmLower(owned, dialog.Id, agent->BlockingAddonId,
-            target, (uint)agent->BlockedInventoryId, agent->BlockedInventorySlotId, ValidRestored(target),
-            Registered(target.ItemId, false), prompt, name))
-        { Stop("降低品质确认窗口与本次装备不符，未确认。"); return; }
-        if (yesno->YesButton == null || !yesno->YesButton->IsEnabled) return;
+            target, (uint)agent->BlockedInventoryId, agent->BlockedInventorySlotId, valid,
+            protectedNq, prompt, name, eventKind))
+        {
+            Plugin.Log.Warning("Lower confirmation mismatch: owner={Owned}, event={Kind}, dialog={Dialog}, blocker={Blocker}, "
+                + "expected={Item}/{Container}/{Slot}, actual={ActualContainer}/{ActualSlot}, valid={Valid}, protected={Protected}, prompt={Prompt}.",
+                owned, eventKind, dialog.Id, agent->BlockingAddonId, target.ItemId, target.Container, target.Slot,
+                agent->BlockedInventoryId, agent->BlockedInventorySlotId, valid, protectedNq, prompt);
+            Stop("降低品质确认窗口与本次装备不符，未确认。"); return;
+        }
+        var checkbox = yesno->ConfirmCheckBox;
+        if (checkbox == null || !checkbox->AtkResNode->IsVisible())
+        { Stop("未找到降低品质的确认勾选框，未确认。"); return; }
+        if (!checkbox->IsChecked)
+        {
+            checkbox->SetChecked(true);
+            if (!OutfitAutoCompleter.ClickButton((AtkUnitBase*)yesno, (AtkComponentButton*)checkbox))
+            {
+                checkbox->SetChecked(false);
+                Stop("未找到降低品质勾选框的点击事件，未确认。");
+            }
+            return; // Validate again and click Yes on a later update.
+        }
+        if (!QualityNormalizationPolicy.CanClickLowerYes(true, true, checkbox->IsChecked)
+            || yesno->YesButton == null || !yesno->YesButton->IsEnabled) return;
         SetPhase(Phase.LowerWait);
         if (!OutfitAutoCompleter.ClickButton((AtkUnitBase*)yesno, yesno->YesButton)) Stop("无法识别降低品质的确认按钮。");
     }

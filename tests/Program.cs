@@ -218,8 +218,8 @@ Check(QualityNormalizationPlan.First([nqShoe], [sleepHq with { Pieces = new Hash
     "Unmapped saved pieces cannot be taken out by a partial restore mask");
 var lowerKey = new CompletionItemKey(40406, 0, 10, true);
 const string lowerPrompt = "确定要降低朴素寝室打底裤的品质变换成以下道具吗？";
-bool Lower(bool owned=true,uint addon=129,uint blocker=129,uint container=0,int slot=10,bool valid=true,bool protect=false,string prompt=lowerPrompt,string name="朴素寝室打底裤")
-    => QualityNormalizationPolicy.CanConfirmLower(owned,addon,blocker,lowerKey,container,slot,valid,protect,prompt,name);
+bool Lower(bool owned=true,uint addon=129,uint blocker=129,uint container=0,int slot=10,bool valid=true,bool protect=false,string prompt=lowerPrompt,string name="朴素寝室打底裤",ulong eventKind=77)
+    => QualityNormalizationPolicy.CanConfirmLower(owned,addon,blocker,lowerKey,container,slot,valid,protect,prompt,name,eventKind);
 Check(Lower(), "Owned native lower-quality prompt matches blocker, item name and physical slot");
 Check(!Lower(owned:false), "Foreign callback handler blocks irreversible quality confirmation");
 Check(!Lower(blocker:130) && !Lower(addon:0), "Only the exact blocking addon can lower quality");
@@ -227,8 +227,19 @@ Check(!Lower(container:1) && !Lower(slot:11), "Moved or different source slots c
 Check(!Lower(valid:false) && !Lower(protect:true), "Changed or newly protected source blocks quality lowering");
 Check(!Lower(prompt:"要丢弃朴素寝室打底裤吗？"), "Discard prompt can never be accepted as quality lowering");
 Check(!Lower(name:"另一件装备") && !Lower(name:""), "Wrong or absent item name cannot authorize lower quality");
-Check(!QualityNormalizationPolicy.CanConfirmLower(true,129,129,lowerKey with {HighQuality=false},0,10,true,false,lowerPrompt,"朴素寝室打底裤"),
+Check(!QualityNormalizationPolicy.CanConfirmLower(true,129,129,lowerKey with {HighQuality=false},0,10,true,false,lowerPrompt,"朴素寝室打底裤",77),
     "An NQ source is never submitted to irreversible HQ lowering");
+
+const string nativeLowerPrompt = "确定要降低朴素寝室打底裤\uE03C的品质变换成以下道具\n吗？";
+Check(Lower(prompt:nativeLowerPrompt), "Observed CN quality prompt accepts the native newline and HQ glyph");
+Check(Lower(prompt:nativeLowerPrompt.Replace("\n", "\r\n")), "Windows newline formatting does not change quality confirmation identity");
+Check(!Lower(prompt:nativeLowerPrompt.Replace("朴素寝室打底裤", "另一件装备")), "Formatted prompt still rejects another item");
+Check(!Lower(prompt:nativeLowerPrompt.Replace("确定要降低", "确定要丢弃")), "Formatted discard prompt cannot authorize lowering");
+Check(!Lower(eventKind:76), "Only the observed InventoryContext lower-quality callback event can be accepted");
+Check(!QualityNormalizationPolicy.CanClickLowerYes(true,true,false), "Quality cannot be lowered before the acknowledgment is checked");
+Check(!QualityNormalizationPolicy.CanClickLowerYes(true,false,true), "Missing acknowledgment control blocks quality lowering");
+Check(!QualityNormalizationPolicy.CanClickLowerYes(false,true,true), "A checked acknowledgment cannot authorize a mismatched item");
+Check(QualityNormalizationPolicy.CanClickLowerYes(true,true,true), "Validated and checked lower-quality confirmation may proceed");
 
 var newShoe = nqShoe with { Assessment = new(OutfitStorageState.NotCreated, "") };
 var newPants = newShoe with { ItemId = 40406, Name = "朴素寝室打底裤", Location = "物品栏 1", Slot = 1 };

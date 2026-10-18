@@ -1,5 +1,15 @@
 # 更新记录
 
+## 0.1.0.24 — 2026-10-18
+
+· 修复转 NQ 时卡在降低品质确认的问题。<br>
+· 缩小品质处理预览，减少留白。
+
+### English
+
+· Fix HQ-to-NQ getting stuck at the quality confirmation.<br>
+· Make the quality preview more compact.
+
 ## 0.1.0.23 — 2026-10-18
 
 · 品质冲突处理改为通过原生窗口取出装备。
