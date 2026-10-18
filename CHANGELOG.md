@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.25 — 2026-10-18
+
+· 转 NQ 时自动关闭投影台，降级后重新打开并存回套装。
+
+### English
+
+· Close the dresser before lowering quality, then reopen it and store the NQ outfit.
+
 ## 0.1.0.24 — 2026-10-18
 
 · 修复转 NQ 时卡在降低品质确认的问题。<br>

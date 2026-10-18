@@ -22,6 +22,10 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService] internal static IAddonLifecycle Addons { get; private set; } = null!;
     [PluginService] internal static IDataManager Data { get; private set; } = null!;
     [PluginService] internal static IPlayerState Player { get; private set; } = null!;
+    [PluginService] internal static ICondition Conditions { get; private set; } = null!;
+    [PluginService] internal static IObjectTable Objects { get; private set; } = null!;
+    [PluginService] internal static ITargetManager Targets { get; private set; } = null!;
+    [PluginService] internal static IClientState ClientState { get; private set; } = null!;
 
     private NativeMainWindow mainWindow = null!;
     private readonly NativeEquipmentHighlighter highlighter;
@@ -123,13 +127,15 @@ public sealed class Plugin : IAsyncDalamudPlugin
             IsCabinetOpen = cabinetOpen;
             if (Completion.IsRunning) Completion.Stop("收纳界面已切换。");
             if (CabinetStore.IsRunning) CabinetStore.Stop("收纳界面已切换。");
-            if (Quality.IsRunning) Quality.Stop("收纳界面已切换。");
+            var qualityTransition = Quality.IsRunning && Quality.AcceptsContextTransition(open, cabinetOpen);
+            if (Quality.IsRunning && !qualityTransition) Quality.Stop("收纳界面已切换。");
             if (Creation.IsRunning) Creation.Stop("收纳界面已切换。");
             QualityPreview.Close();
             if (open || cabinetOpen) mainWindow.OpenOnCompletable();
             else
             {
-                mainWindow.Close();
+                // Keep Stop available while our quality job temporarily leaves the dresser.
+                if (!qualityTransition) mainWindow.Close();
                 highlighter.Restore();
             }
             Inventory.Clear();

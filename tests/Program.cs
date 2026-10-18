@@ -309,6 +309,35 @@ var oversizedStored = new StoredOutfit(555,Enumerable.Range(1,9).Select(i=>(uint
 var oversizedExtras = new uint[]{10,11}.Select(id=>newShoe with {ItemId=id,Assessment=new(OutfitStorageState.QualityConflict,"")}).ToArray();
 Check(QualityNormalizationPlan.First(oversizedExtras,[oversizedStored],_=>new("oversized","set",[oversizedDefinition]))==null,
     "Normalization cannot take out or lower HQ gear when the final native request would exceed nine sources");
+Check(QualityNormalizationPolicy.CanLowerOutside(false,false,false), "Quality lowering is allowed only after closing the dresser and leaving its event");
+Check(!QualityNormalizationPolicy.CanLowerOutside(true,false,false), "A visible dresser prevents quality lowering");
+Check(!QualityNormalizationPolicy.CanLowerOutside(false,false,true), "A closed dresser still blocks lowering until the player is no longer occupied");
+Check(!QualityNormalizationPolicy.CanLowerOutside(false,true,false), "Opening a cabinet never permits quality lowering");
+Check(QualityNormalizationPolicy.SameDresser(123,456,789,123,456,789,2), "Reopening resolves the captured dresser in the same territory and range");
+Check(!QualityNormalizationPolicy.SameDresser(123,456,789,124,456,789,2), "An identical nearby dresser cannot replace the original object");
+Check(!QualityNormalizationPolicy.SameDresser(123,456,789,123,457,789,2), "A recycled object ID with different base data is rejected");
+Check(!QualityNormalizationPolicy.SameDresser(123,456,789,123,456,790,2), "Changing territory invalidates the original dresser");
+Check(!QualityNormalizationPolicy.SameDresser(123,456,789,123,456,789,7), "Walking away stops reopening instead of moving the player");
+Check(!QualityNormalizationPolicy.SameDresser(123,456,789,123,456,789,float.NaN), "Unknown dresser distance cannot authorize an interaction");
+Check(!QualityNormalizationPolicy.SameDresser(0,456,789,0,456,789,2), "A missing dresser ID cannot authorize an interaction");
+foreach(var step in Enum.GetValues<QualityNormalizationPhase>())
+{
+    var expectedClose = step is QualityNormalizationPhase.WaitSelectionClosed or QualityNormalizationPhase.WaitDresserClosed;
+    var expectedOpen = step == QualityNormalizationPhase.WaitDresserOpen;
+    Check(QualityNormalizationPolicy.AcceptsContextTransition(step,false,false)==expectedClose
+        && QualityNormalizationPolicy.AcceptsContextTransition(step,true,false)==expectedOpen
+        && !QualityNormalizationPolicy.AcceptsContextTransition(step,true,true)
+        && !QualityNormalizationPolicy.AcceptsContextTransition(step,false,true),
+        $"Only explicitly awaited dresser transitions keep the quality job running: {step}");
+}
+Check(!QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.Store)
+    && !QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.Restore),
+    "Taking out and storing outfits require an open dresser");
+Check(QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.Lower)
+    && QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.LowerConfirm)
+    && QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.LowerWait)
+    && QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.WaitDresserOpen),
+    "Closing the dresser keeps the verified lowering and reopening stages alive");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

@@ -1,3 +1,9 @@
+using Phase = SuitKing.QualityNormalizationPhase;
+using System.Numerics;
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -9,10 +15,12 @@ namespace SuitKing;
 
 internal sealed unsafe class QualityNormalizer(Plugin plugin)
 {
-    private enum Phase { Idle, Restore, RestoreSelect, RestoreSubmit, RestoreConfirm, RestoreWait, Lower, LowerConfirm, LowerWait, Store, StoreWait }
     private Phase phase;
     private QualityNormalizationPlan? plan;
     private ulong characterId;
+    private ulong dresserId;
+    private uint dresserDataId;
+    private uint territoryId;
     private long deadline;
     private long nextAction;
     private readonly List<CompletionItemKey> restored = [];
@@ -42,6 +50,7 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
             var candidate = stored == null ? null : QualityNormalizationPlan.First(plugin.Inventory.Equipment, stored, plugin.Inventory.FindOutfit);
             if (candidate == null) throw new InvalidOperationException("没有可自动处理的 NQ 装备与 HQ 套装冲突。");
             Preflight(candidate);
+            CaptureDresser();
             characterId = Plugin.Player.ContentId;
             plan = candidate;
             plugin.QualityPreview.Present(candidate);
@@ -60,6 +69,7 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
             plugin.Inventory.Refresh();
             if (!plugin.Inventory.IsComplete || !plugin.Inventory.AreOutfitsLoaded) throw new InvalidOperationException("数据刷新中，请重新预览。");
             Preflight(expected);
+            RequireSameDresser();
             restoreAccepted = false;
             SetPhase(Phase.Restore);
             Status = "等待预览窗口关闭后取出 HQ 部件。";
@@ -76,6 +86,48 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
         plan = null;
         restoreAccepted = false;
         plugin.RequestRefresh();
+    }
+
+    internal bool AcceptsContextTransition(bool dresserOpen, bool cabinetOpen)
+        => QualityNormalizationPolicy.AcceptsContextTransition(phase, dresserOpen, cabinetOpen);
+
+    private bool OutsideDresser => QualityNormalizationPolicy.AllowsClosedDresser(phase);
+
+    private static bool Busy => Plugin.Conditions[ConditionFlag.OccupiedInQuestEvent]
+        || Plugin.Conditions[ConditionFlag.Occupied] || Plugin.Conditions[ConditionFlag.OccupiedInEvent]
+        || Plugin.Conditions[ConditionFlag.OccupiedInCutSceneEvent] || Plugin.Conditions[ConditionFlag.WatchingCutscene]
+        || Plugin.Conditions[ConditionFlag.BetweenAreas] || Plugin.Conditions[ConditionFlag.BetweenAreas51]
+        || Plugin.Conditions[ConditionFlag.InCombat] || Plugin.Conditions[ConditionFlag.Casting];
+
+    private static bool CanLower => QualityNormalizationPolicy.CanLowerOutside(
+        Visible(Plugin.DresserAddonName) || Visible("MiragePrismPrismBoxCrystallize"),
+        Visible("Cabinet") || Visible("CabinetWithdraw"), Busy);
+
+    private void CaptureDresser()
+    {
+        var player = Plugin.Objects.LocalPlayer;
+        if (player == null) throw new InvalidOperationException("角色数据未就绪。");
+        bool IsDresser(IGameObject obj) => obj.ObjectKind == ObjectKind.EventObj
+            && obj.Name.TextValue == "投影台" && Vector3.Distance(player.Position, obj.Position) <= 6;
+        var target = Plugin.Targets.Target;
+        var candidates = Plugin.Objects.Where(IsDresser).ToArray();
+        var dresser = target != null && IsDresser(target) ? target : candidates.Length == 1 ? candidates[0] : null;
+        if (dresser == null) throw new InvalidOperationException("无法唯一识别附近的投影台，请先选中当前投影台。");
+        dresserId = dresser.GameObjectId;
+        dresserDataId = dresser.BaseId;
+        territoryId = Plugin.ClientState.TerritoryType;
+        RequireSameDresser();
+    }
+
+    private IGameObject RequireSameDresser()
+    {
+        var player = Plugin.Objects.LocalPlayer;
+        var dresser = Plugin.Objects.FirstOrDefault(obj => obj.GameObjectId == dresserId);
+        if (player == null || dresser == null || !QualityNormalizationPolicy.SameDresser(dresserId, dresserDataId,
+            territoryId, dresser.GameObjectId, dresser.BaseId, Plugin.ClientState.TerritoryType,
+            Vector3.Distance(player.Position, dresser.Position)) || dresser.ObjectKind != ObjectKind.EventObj)
+            throw new InvalidOperationException("原投影台已不可用或距离过远，已停止。");
+        return dresser;
     }
 
     private void RequireContext()
@@ -130,10 +182,15 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
             if (now > deadline) { Stop("等待游戏响应超时，未重复操作。"); return; }
             if (now < nextAction) return;
             nextAction = now + 350;
-            if (!plugin.IsDresserOpen || plugin.IsCabinetOpen || Plugin.Player.ContentId != characterId || plan == null)
-            { Stop("投影台已关闭或角色已切换。"); return; }
+            if ((!plugin.IsDresserOpen && !OutsideDresser) || plugin.IsCabinetOpen
+                || Plugin.Player.ContentId != characterId || Plugin.ClientState.TerritoryType != territoryId || plan == null)
+            { Stop("收纳界面或角色所在区域已改变。"); return; }
+            RequireSameDresser();
+            if (Plugin.Conditions[ConditionFlag.InCombat] || Plugin.Conditions[ConditionFlag.BetweenAreas]
+                || Plugin.Conditions[ConditionFlag.BetweenAreas51] || Plugin.Conditions[ConditionFlag.WatchingCutscene])
+            { Stop("角色正在战斗、切换区域或观看过场，已停止。"); return; }
             var manager = MirageManager.Instance();
-            if (manager == null || !manager->PrismBoxLoaded) return;
+            if (!OutsideDresser && (manager == null || !manager->PrismBoxLoaded)) return;
             if (phase != Phase.LowerConfirm && phase != Phase.LowerWait && Visible("SelectYesno")) { Stop("出现其他确认窗口，已停止。"); return; }
             switch (phase)
             {
@@ -187,16 +244,35 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
                         if (matches.Length != 1) { Stop("无法唯一识别取出的 HQ 部件。"); return; }
                         restored.Add(matches[0]);
                     }
-                    SetPhase(Phase.Lower); break;
+                    SetPhase(Phase.CloseSelection); break;
+                case Phase.CloseSelection:
+                    RequireSameDresser();
+                    SetPhase(Phase.WaitSelectionClosed);
+                    CloseNative("MiragePrismPrismBoxCrystallize");
+                    Status = "正在关闭投影台，等待解除降低品质限制。";
+                    break;
+                case Phase.WaitSelectionClosed:
+                    if (Visible("MiragePrismPrismBoxCrystallize")) return;
+                    SetPhase(Phase.CloseDresser);
+                    break;
+                case Phase.CloseDresser:
+                    RequireSameDresser();
+                    SetPhase(Phase.WaitDresserClosed);
+                    CloseNative(Plugin.DresserAddonName);
+                    break;
+                case Phase.WaitDresserClosed:
+                    if (!CanLower) return;
+                    SetPhase(Phase.Lower);
+                    break;
                 case Phase.Lower:
-                    if (lowerIndex >= restored.Count) { SetPhase(Phase.Store); break; }
+                    if (!CanLower) return;
+                    if (lowerIndex >= restored.Count) { SetPhase(Phase.ReopenDresser); break; }
                     var target = restored[lowerIndex];
                     if (!ValidRestored(target) || Registered(target.ItemId, false)) { Stop("取出装备已移动或受到职业配装保护。"); return; }
                     var agent = AgentInventoryContext.Instance();
-                    var addon = Plugin.GameGui.GetAddonByName(Plugin.DresserAddonName);
-                    if (agent == null || addon.IsNull || agent->BlockingAddonId != 0) return;
+                    if (agent == null || agent->BlockingAddonId != 0) return;
                     SetPhase(Phase.LowerConfirm);
-                    agent->LowerItemQuality(Read(target), (InventoryType)target.Container, target.Slot, addon.Id);
+                    agent->LowerItemQuality(Read(target), (InventoryType)target.Container, target.Slot, 0);
                     Status = $"正在将部件降为 NQ：{lowerIndex + 1} / {restored.Count}";
                     break;
                 case Phase.LowerConfirm: ConfirmLower(); break;
@@ -212,6 +288,25 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
                         handIns.Add(nq); lowerIndex++; SetPhase(Phase.Lower);
                     }
                     else if (!Matches(original)) Stop("降低品质时装备来源发生改变。");
+                    break;
+                case Phase.ReopenDresser:
+                    if (!CanLower) return;
+                    var dresser = RequireSameDresser();
+                    var context = AgentInventoryContext.Instance();
+                    var targets = TargetSystem.Instance();
+                    if (context == null || context->BlockingAddonId != 0 || targets == null || !dresser.IsTargetable) return;
+                    if (handIns.Count != plan.PrismCount || handIns.Any(key => key.HighQuality || !Valid(key)))
+                    { Stop("待存回的 NQ 装备已改变。"); return; }
+                    SetPhase(Phase.WaitDresserOpen); // Interact once; never retry after a timeout.
+                    targets->InteractWithObject((FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)dresser.Address, true);
+                    Status = "正在重新打开原投影台，准备存回 NQ 套装。";
+                    break;
+                case Phase.WaitDresserOpen:
+                    RequireSameDresser();
+                    if (!plugin.IsDresserOpen || manager == null || !manager->PrismBoxRequested || !manager->PrismBoxLoaded) return;
+                    plugin.Inventory.Refresh();
+                    if (!plugin.Inventory.IsComplete || !plugin.Inventory.AreOutfitsLoaded) return;
+                    SetPhase(Phase.Store);
                     break;
                 case Phase.Store: Store(manager); break;
                 case Phase.StoreWait:
@@ -233,6 +328,9 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
 
     private void ConfirmLower()
     {
+        // The owned confirmation itself can mark the player occupied. It must not
+        // satisfy the idle gate used before opening it, but the dresser must stay closed.
+        if (plugin.IsDresserOpen || Plugin.Conditions[ConditionFlag.OccupiedInQuestEvent]) return;
         var target = restored[lowerIndex];
         if (Matches(target with { HighQuality = false })) { SetPhase(Phase.LowerWait); return; }
         var agent = AgentInventoryContext.Instance();
@@ -301,6 +399,13 @@ internal sealed unsafe class QualityNormalizer(Plugin plugin)
         SetPhase(Phase.StoreWait);
         Status = "正在将 NQ 部件存回套装，等待游戏确认。";
         if (!manager->StoreNewOutfit(plan.Definition.Id, containers, slots)) Stop("游戏未接受 NQ 套装存入。");
+    }
+
+    private static void CloseNative(string name)
+    {
+        var addon = Plugin.GameGui.GetAddonByName(name);
+        if (!addon.IsNull && addon.IsReady && addon.IsVisible)
+            ((AtkUnitBase*)addon.Address)->FireCloseCallback();
     }
 
     private static bool Visible(string name) { var addon = Plugin.GameGui.GetAddonByName(name); return !addon.IsNull && addon.IsReady && addon.IsVisible; }

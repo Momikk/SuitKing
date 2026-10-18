@@ -18,8 +18,8 @@ internal sealed unsafe class QualityPreviewWindow(Plugin plugin) : NativeAddon
     {
         if (IsAllocated) return;
         plan = value;
-        // Header, six-to-thirteen content rows, one compact button row and margins.
-        Size = new(520, 92 + (value.PrismCount + 4) * 22);
+        // Header, seven-to-fourteen content rows, one compact button row and margins.
+        Size = new(520, 92 + (value.PrismCount + 5) * 22);
         Open();
     }
 
@@ -42,6 +42,7 @@ internal sealed unsafe class QualityPreviewWindow(Plugin plugin) : NativeAddon
             Line("取出并降为 NQ：" + Plugin.Data.GetExcelSheet<Item>().GetRow(id).Name.ExtractText());
         foreach (var item in plan.Additional) Line("一起存回：" + item.Name + "（NQ）");
         Line($"需要 {plan.Stored.Pieces.Count} 个物品栏空位、{plan.PrismCount} 个幻象棱晶。");
+        Line("将暂时关闭投影台，降为 NQ 后自动打开存回。");
         Line("中途停止时，已取出的装备留在物品栏。", true);
         var buttonY = y + 12;
         var buttonX = (ContentSize.X - 346) / 2;
