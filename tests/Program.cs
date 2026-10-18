@@ -173,6 +173,26 @@ Check(OutfitStateEvaluator.Evaluate(40407, [sleepSet,new OutfitDefinition(999,"�
 var nqShoe = new OutfitEquipment(40407, "朴素寝室拖鞋", false, "兵装库·脚部", 3, 30000, sleepSet.Name,
     false, new(OutfitStorageState.QualityConflict, ""));
 OutfitInfo? SleepFind(uint id) => sleepSet.Pieces.Contains(id) ? new("寝室装备",sleepSet.Name,[sleepSet]) : null;
+Check(OutfitRestorePolicy.MatchesSource(1045518,210,1045518,210,true), "Native restore source matches the observed HQ outfit row");
+Check(!OutfitRestorePolicy.MatchesSource(1045518,210,45518,210,true), "Native restore rejects the NQ copy");
+Check(!OutfitRestorePolicy.MatchesSource(1045518,210,1045518,211,true), "Native restore rejects another dresser slot");
+Check(!OutfitRestorePolicy.MatchesSource(1045518,210,1045518,210,false), "Native restore rejects a piece renderer in place of a full outfit row");
+Check(!OutfitRestorePolicy.MatchesSource(1045518,800,1045518,800,true), "Native restore rejects an out-of-range source index");
+const string restorePrompt = "确定要将所选幻影变回道具吗？";
+bool RestoreConfirm(bool owned=true,ushort mask=32,uint selected=32,uint raw=1045518,uint shown=1045518,
+    uint excluded=0xFFFFFFDF,bool valid=true,string prompt=restorePrompt)
+    => OutfitRestorePolicy.CanConfirm(owned,mask,selected,raw,shown,excluded,valid,prompt);
+Check(RestoreConfirm(), "Native restore confirmation accepts the observed CN dialog snapshot");
+Check(!RestoreConfirm(owned:false), "Native restore rejects another handler's confirmation");
+Check(!RestoreConfirm(mask:0,selected:0,excluded:uint.MaxValue), "Native restore never confirms an empty selection");
+Check(!RestoreConfirm(mask:2048,selected:2048,excluded:0xFFFFF7FF), "Native restore rejects bits outside eleven outfit columns");
+Check(!RestoreConfirm(selected:64), "Native restore rejects a different selected part");
+Check(!RestoreConfirm(selected:96), "Native restore rejects additional unplanned parts");
+Check(!RestoreConfirm(shown:1045519), "Native restore rejects another outfit in the final window");
+Check(!RestoreConfirm(raw:45518,shown:45518), "Native restore rejects NQ input to the HQ lowering workflow");
+Check(!RestoreConfirm(excluded:0xFFDF), "Final native excluded mask requires the full 32-bit complement");
+Check(!RestoreConfirm(valid:false), "Native restore rejects changed source context");
+Check(!RestoreConfirm(prompt:"确定要降低品质吗？"), "Native restore rejects unrelated confirmation text");
 var normalize = QualityNormalizationPlan.First([nqShoe], [sleepHq], SleepFind);
 Check(normalize != null && normalize.RawStoredId == 1045518, "Normalization preserves the exact HQ storage identity");
 Check(normalize!.RestoreMask == 1 << 5, "Only the saved pants slot is restored; empty slots are not requested");

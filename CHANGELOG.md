@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.23 — 2026-10-18
+
+· 品质冲突处理改为通过原生窗口取出装备。
+
+### English
+
+· Retrieve conflicting outfit pieces through the native windows.
+
 ## 0.1.0.22 — 2026-10-17
 
 · 修复重复打开“冲突转 NQ”预览时报错的问题。

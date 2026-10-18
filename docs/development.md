@@ -111,3 +111,14 @@ OutfitSubmissionLayout.Pack 将有实际装备的来源按表列排序，排除�
 移除 Present 中重复赋值的固定标题，保留 Plugin 创建预览时的初始标题。同步修正本仓库捆绑的 KamiToolKit NativeAddon.Title/Subtitle setter：总是保存配置值，仅在 InternalAddon 非空且未 Finalize 时更新原生节点。分配时原有 SetInitialState 会把保存的标题应用到新窗口，保证重新打开和关闭期间改标题均安全，不忽略已打开窗口的实时标题更新。
 
 新增 tests-native-ui/NativeUiLifecycle.Tests.csproj，直接测试构建后的 SuitKing.KamiToolKit.dll。使用未初始化的 WindowNode 模拟已释放的原生子节点，修复前复现同一路径的 NullReferenceException，修复后通过关闭状态赋标题、活动状态实时更新、Finalize 后禁止旧节点写入、保存下次分配标题四项检查。测试不分配游戏窗口、不执行游戏原生函数；活动状态使用仅计数的覆盖方法。原有装备策略检查 150 项通过。预览的实机重复打开及随后实际取出、降低和存回仍待验收。
+
+
+## 0.1.0.23 原生取出窗口流程
+
+用户已手动验证：选中朴素寝室 HQ 套装，右键将幻影变回道具，勾选裤子、确定、最终确定可成功取出。本次未替用户点击取出或降品质。只读核对当前国服原生 AgentMiragePrismPrismBox.ReceiveEvent：上下文动作 9 打开 MiragePrismPrismSetRevert，确认选择的事件 4 将掩码存入 Data+0x11AE68，并打开 MiragePrismPrismSetRevertC；最终确认事件 3 调用原生 RestorePrismBoxSetItem。后者与旧的直接提交入口相同，因此不声称已查明旧调用返回 false 的根因。
+
+NativeOutfitRestorer 在原生数据就绪后唯一匹配 ItemId=原始 HQ 套装 ID、Slot=计划投影台下标且整套行（PrismBoxItem+0x88 为 255），设置 UI 的 TempContextItemIndex 后调用上下文动作。只修改 UI 选择状态，不直接改库存、套装锁位或网络请求。等待原生窗口就绪并核对回调归属、ContextAddonId、原始 HQ ID、当前锁位后，用按钮自带事件依次点击全部选中（9）和确定（11）。计划本来包含所有已存部件，因此全部选中等于计划，不纳入其他套装。
+
+最终窗口必须由同一 Agent 回调拥有、ContextAddon2Id 对应本窗口、原选择窗口 ID 未变、原生源行未变、选择掩码精确等于计划，且 AtkValues 中的 HQ ID 和完整 32 位反掩码匹配；原生文本节点 2 为“确定要将所选幻影变回道具吗？”。实机只读快照为 raw=1045518、slot=210、context=3673、mask=0x20、excluded=0xFFFFFFDF。匹配后先进入等待态再点击最终是（14），不重复点击。库存变化仍通过既有 RestoreWait 验证：HQ 记录移除、每个新增 HQ 部件恰好一个来源且不是原背包已有物品，之后才进入降低品质阶段。请求发出不等于游戏已完成；中途停止提示为请检查物品栏，不再断言已取出。仅针对当前国服已核对的窗口与字段。
+
+装备策略测试新增 16 项，覆盖原生观察快照、异品质/异格/部件行/越界来源、错误回调、空选择/额外部位、不同套装、错误的 16 位截断反掩码、来源变化及其他确认文字。原有 UI 生命周期测试继续保留。完整自动操作与消耗仍待实机验收，不能把只读核对或策略测试视为真实取出/降品质/存回成功。
