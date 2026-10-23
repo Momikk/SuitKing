@@ -338,6 +338,62 @@ Check(QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.L
     && QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.LowerWait)
     && QualityNormalizationPolicy.AllowsClosedDresser(QualityNormalizationPhase.WaitDresserOpen),
     "Closing the dresser keeps the verified lowering and reopening stages alive");
+var silentSet = new OutfitDefinition(60000,"静默测试套装",[0,0,101,102,103,0,0,0,0,0,0]);
+OutfitInfo? SilentFind(uint id) => new("测试装备","静默测试套装",[silentSet]);
+var silentHead = new CompletionItemKey(101,0,1,false);
+var silentBody = new CompletionItemKey(102,3201,2,false);
+var silentHands = new CompletionItemKey(103,3202,3,false);
+var silentSaved = new StoredOutfit(60000,new HashSet<uint>{103},false,27);
+var silentPlan = ExistingOutfitCompletionPlan.First([silentBody,silentHead,silentHands],[silentSaved],SilentFind);
+Check(silentPlan?.Stored.BoxIndex==27 && silentPlan.RawId==60000, "Silent completion uses an existing dresser slot, not the outfit row ID");
+Check(silentPlan!.Sources.SequenceEqual([silentHead,silentBody]), "Missing pieces from one outfit are packed into a single request in sheet order");
+Check(!silentPlan.Sources.Contains(silentHands), "Silent completion never resubmits an already saved piece");
+Check(ExistingOutfitCompletionPlan.First([silentHead with {HighQuality=true}],[silentSaved],SilentFind)==null,
+    "Opposite-quality gear cannot enter a silent existing-outfit request");
+var silentHq = ExistingOutfitCompletionPlan.First([silentHead with {HighQuality=true}],
+    [silentSaved with {HighQuality=true}],SilentFind);
+Check(silentHq?.RawId==1_060_000 && silentHq.Sources.Single().HighQuality,
+    "Silent HQ completion preserves quality and exact dresser slot identity");
+Check(ExistingOutfitCompletionPlan.First([silentHead],[],SilentFind)==null,
+    "Silent completion cannot create an outfit when no matching saved outfit exists");
+Check(ExistingOutfitCompletionPlan.First([silentHead],[silentSaved with {BoxIndex=-1}],SilentFind)==null
+    && ExistingOutfitCompletionPlan.First([silentHead],[silentSaved with {BoxIndex=800}],SilentFind)==null,
+    "Unknown or out-of-bounds dresser slots are rejected");
+Check(ExistingOutfitCompletionPlan.First([silentHead],[silentSaved with {Pieces=new HashSet<uint>{101,102,103}}],SilentFind)==null,
+    "A complete outfit cannot produce a new request");
+Check(ExistingOutfitCompletionPlan.First([silentHead,silentHead with {Slot=4}],[silentSaved],SilentFind)!.Sources.Count==1,
+    "Only one physical copy of each missing piece is used in one batch");
+Check(ExistingOutfitCompletionPlan.First([silentHead,silentBody with {Container=0,Slot=1}],[silentSaved],SilentFind)!.Sources.Count==1,
+    "One physical slot cannot be selected as two different items");
+Check(ExistingOutfitCompletionPlan.First([silentHead with {Container=9999}],[silentSaved],SilentFind)==null,
+    "An invalid source cannot produce a silent request");
+Check(ExistingOutfitCompletionPlan.First([new(999,0,1,false)],[silentSaved],SilentFind)==null,
+    "Unmapped equipment cannot enter a silent batch");
+Check(ExistingOutfitCompletionPlan.First([silentHead],[silentSaved],_=>null)==null,
+    "Missing catalog data does not guess a target outfit");
+Check(ExistingOutfitCompletionPlan.First([silentHead],[silentSaved],_=>new("bad","bad",[silentSet with {Pieces=[101]}]))==null,
+    "Malformed sheet columns cannot be submitted silently");
+var alternativeSet = silentSet with {Id=60001,Name="另一套装"};
+var alternativeSaved = silentSaved with {Id=60001,BoxIndex=28};
+var sharedSilent = ExistingOutfitCompletionPlan.First([silentHead],[alternativeSaved],
+    _=>new("shared","shared",[silentSet,alternativeSet]));
+Check(sharedSilent?.Stored.BoxIndex==28 && sharedSilent.Definition.Id==60001,
+    "Shared equipment resolves an actually stored compatible outfit");
+var sourceSnapshot = new HashSet<CompletionItemKey>{silentHead};
+var snapshotPlan = ExistingOutfitCompletionPlan.First(sourceSnapshot.ToArray(),[silentSaved],SilentFind);
+Check(snapshotPlan!.Sources.SequenceEqual([silentHead]), "Equipment outside the clicked batch is never added to a request");
+Check(!ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>false,_=>false,true),
+    "Removing inventory sources alone cannot prove storage success");
+Check(!ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>true,_=>true,true),
+    "Unlocking an outfit without removing the submitted sources cannot prove success");
+Check(!ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>true,key=>key==silentBody,true),
+    "A partially applied multi-piece batch stays pending");
+Check(ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>true,_=>false,true),
+    "Both saved unlocks and removed sources acknowledge the batch before advancing");
+Check(!ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>true,_=>false,false),
+    "Unloaded inventories are not interpreted as removed sources");
+Check(!ExistingOutfitCompletionPlan.IsAcknowledged([],_=>true,_=>false,true),
+    "An empty batch cannot be acknowledged as success");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

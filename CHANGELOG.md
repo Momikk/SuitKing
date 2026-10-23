@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.26 — 2026-10-23
+
+· 自动补齐改为静默快速处理，同套缺件合并存入。
+
+### English
+
+· Complete outfits silently and faster by submitting missing pieces together.
+
 ## 0.1.0.25 — 2026-10-18
 
 · 转 NQ 时自动关闭投影台，降级后重新打开并存回套装。

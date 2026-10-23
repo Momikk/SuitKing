@@ -3,7 +3,7 @@
     "Author": "Momikk",
     "Name": "套装之王 SuitKing",
     "InternalName": "SuitKing",
-    "AssemblyVersion": "0.1.0.25",
+    "AssemblyVersion": "0.1.0.26",
     "Description": "使用游戏原生 UI 汇总物品栏与兵装库中的套装幻影化装备，采用紧凑行距、左侧装备套装过滤和单击分类；默认打开可补齐，支持按钮批量补入已有套装，原生装备选择列表中可补齐名称标红。增加收藏柜待收纳状态及一键存入，始终忽略穿戴和职业配装装备。新增 HQ/NQ 品质冲突提示，支持预览确认后转为 NQ 并存回。支持为未建立装备一键创建套装。可通过 /suitking 或 /sking 打开。",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/Momikk/SuitKing",
@@ -21,11 +21,11 @@
     "Punchline": "汇总物品栏和兵装库中支持套装幻影化的装备。",
     "AcceptsFeedback": true,
     "DownloadCount": 0,
-    "LastUpdate": 1792297380,
+    "LastUpdate": 1792765556,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://raw.githubusercontent.com/Momikk/SuitKing/main/dist/SuitKing-0.1.0.25.zip",
-    "DownloadLinkUpdate": "https://raw.githubusercontent.com/Momikk/SuitKing/main/dist/SuitKing-0.1.0.25.zip",
+    "DownloadLinkInstall": "https://raw.githubusercontent.com/Momikk/SuitKing/main/dist/SuitKing-0.1.0.26.zip",
+    "DownloadLinkUpdate": "https://raw.githubusercontent.com/Momikk/SuitKing/main/dist/SuitKing-0.1.0.26.zip",
     "IsHide": false,
-    "Changelog": "版本 0.1.0.25\n· 转 NQ 时自动关闭投影台，降级后重新打开并存回套装。\nEnglish\n· Close the dresser before lowering quality, then reopen it and store the NQ outfit."
+    "Changelog": "版本 0.1.0.26\n· 自动补齐改为静默快速处理，同套缺件合并存入。\nEnglish\n· Complete outfits silently and faster by submitting missing pieces together."
   }
 ]

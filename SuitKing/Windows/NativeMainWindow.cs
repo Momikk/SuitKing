@@ -70,7 +70,7 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
         completeButton = new TextButtonNode
         {
             String = "自动补齐", Position = origin + new Vector2(170, -2), Size = new Vector2(112, 28),
-            TextTooltip = "将未被过滤的可补齐装备加入已有套装，消耗幻象棱晶。再次点击可停止。",
+            TextTooltip = "静默补入未被过滤的可补齐装备，同套缺件合并处理，消耗幻象棱晶。再次点击可停止。",
             OnClick = () => { if (plugin.IsCabinetOpen) plugin.CabinetStore.Toggle(); else plugin.Completion.Toggle(); },
         };
         AddNode(completeButton);
@@ -140,7 +140,7 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
             completeButton.String = cabinet ? (plugin.CabinetStore.IsRunning ? "停止收纳" : "一键存入收藏柜")
                 : (plugin.Completion.IsRunning ? "停止补齐" : "自动补齐");
             completeButton.TextTooltip = cabinet ? "存入尚未收录的装备；忽略穿戴、职业配装及重复副本。再次点击可停止。"
-                : "将未被过滤的可补齐装备加入已有套装，消耗幻象棱晶。再次点击可停止。";
+                : "静默补入未被过滤的可补齐装备，同套缺件合并处理，消耗幻象棱晶。再次点击可停止。";
             completeButton.IsEnabled = !plugin.Creation.IsRunning && !plugin.Quality.IsRunning && (running || (plugin.Inventory.IsComplete && (cabinet ? plugin.IsCabinetStoreOpen && plugin.Inventory.IsCabinetLoaded : plugin.IsDresserOpen && plugin.Inventory.AreOutfitsLoaded)));
             hideCheckbox!.IsVisible = !cabinet;
             hideCheckbox.IsEnabled = !running;
