@@ -41,6 +41,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
     internal CabinetAutoStore CabinetStore { get; }
     internal QualityNormalizer Quality { get; }
     internal OutfitCreator Creation { get; }
+    internal ExpertDeliveryPreviewController Delivery { get; private set; } = null!;
+    internal ExpertDeliveryPreviewWindow DeliveryPreview { get; private set; } = null!;
     internal QualityPreviewWindow QualityPreview { get; private set; } = null!;
     public bool IsCabinetOpen { get; private set; }
     public bool IsCabinetStoreOpen => IsCabinetOpen && IsVisible("Cabinet");
@@ -67,6 +69,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 InternalName = "SuitKingNative", Title = "套装之王 SuitKing", Size = new(760, 520),
             };
             QualityPreview = new QualityPreviewWindow(this) { Title = "处理品质冲突", InternalName = "SuitKingQualityPreview" };
+            DeliveryPreview = new ExpertDeliveryPreviewWindow(this) { Title = "筹备稀有品预览（不提交）", InternalName = "SuitKingDeliveryPreview", Size = new(660, 480) };
+            Delivery = new ExpertDeliveryPreviewController(this);
+            Delivery.Initialize();
             CommandsAdd(CommandName);
             CommandsAdd("/sking");
             PluginInterface.UiBuilder.OpenMainUi += OpenMainUi;
@@ -87,6 +92,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
             if (CabinetStore.IsRunning) CabinetStore.Stop("插件已禁用。");
             if (Quality.IsRunning) Quality.Stop("插件已禁用。");
             if (Creation.IsRunning) Creation.Stop("插件已禁用。");
+            Delivery?.Dispose();
             highlighter.Dispose();
             Framework.Update -= OnFrameworkUpdate;
             PluginInterface.UiBuilder.OpenMainUi -= OpenMainUi;
@@ -95,6 +101,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         });
         if (mainWindow is not null) await mainWindow.DisposeAsync();
         if (QualityPreview is not null) await QualityPreview.DisposeAsync();
+        if (DeliveryPreview is not null) await DeliveryPreview.DisposeAsync();
         await KamiToolKitLibrary.DisposeAsync();
         Inventory.Clear();
     }
@@ -107,6 +114,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
     private void OnFrameworkUpdate(IFramework framework)
     {
+        Delivery.Tick();
         var contentId = Player.ContentId;
         if (contentId != characterId)
         {

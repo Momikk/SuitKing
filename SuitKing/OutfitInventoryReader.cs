@@ -26,6 +26,8 @@ internal sealed class OutfitInventoryReader
         type = InventoryType.Invalid;
         return false;
     }
+    internal static string? ContainerName(InventoryType type)
+        => Containers.Where(entry => entry.Type == type).Select(entry => entry.Name).FirstOrDefault();
     private readonly GearsetSnapshotGate gearsetGate = new();
     private OutfitCatalog? catalog;
     private Dictionary<uint, uint>? cabinetIds;

@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.27 — 2026-10-25
+
+· 增加筹备稀有品预览：按品级筛选并排除职业配装，仅展示，不提交。
+
+### English
+
+· Add an expert-delivery preview with item-level and gearset filtering; no items are submitted.
+
 ## 0.1.0.26 — 2026-10-23
 
 · 自动补齐改为静默快速处理，同套缺件合并存入。

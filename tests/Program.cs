@@ -394,6 +394,47 @@ Check(!ExistingOutfitCompletionPlan.IsAcknowledged(silentPlan.Sources,_=>true,_=
     "Unloaded inventories are not interpreted as removed sources");
 Check(!ExistingOutfitCompletionPlan.IsAcknowledged([],_=>true,_=>false,true),
     "An empty batch cannot be acknowledged as success");
+var deliveryLow = new ExpertDeliveryCandidate(new(100,0,1,false),"低品级装备",180,1035,"物品栏 1");
+var deliveryHigh = deliveryLow with { Key=new(101,3201,2,false),Name="高品级装备",ItemLevel=600,SealReward=1870 };
+var deliveryMid = deliveryLow with { Key=new(102,0,3,false),Name="中品级装备",ItemLevel=500,SealReward=1726 };
+var deliveryPlan = ExpertDeliveryPreviewPlan.Build([deliveryHigh,deliveryMid,deliveryLow],600,71385,90000);
+Check(deliveryPlan.Items.SequenceEqual([deliveryLow,deliveryMid]), "Delivery demo sorts by ascending item level and excludes the exact stopping level");
+Check(deliveryPlan.SealsAfter==71385+1035+1726 && deliveryPlan.StopReason.Contains("600"), "Delivery demo reports projected seals and the item-level stopping reason");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow with {Protected=true},deliveryMid],600,0,90000).Items.SequenceEqual([deliveryMid]),
+    "Protected gear is excluded even if it has the lowest item level");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow],180,0,90000).Items.Count==0,
+    "The item at the specified item level is never included");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow],181,0,90000).Items.Count==1,
+    "Gear immediately below the stopping level is included");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow],600,90000,90000).Items.Count==0,
+    "Full seals stop before any hypothetical delivery");
+var nearFull = ExpertDeliveryPreviewPlan.Build([deliveryLow,deliveryMid],600,88000,90000);
+Check(nearFull.Items.SequenceEqual([deliveryLow]) && nearFull.StopReason.Contains("上限"),
+    "The preview stops before the next reward would overflow seals");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow],600,88965,90000).SealsAfter==90000,
+    "A reward that exactly fills the seal capacity is included and then stops");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow with {Available=false},deliveryMid],600,0,90000).Items.Count==0,
+    "An unavailable lowest item stops instead of skipping to later gear");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow with {SealReward=0}],600,0,90000).Items.Count==0,
+    "Unknown seal rewards cannot enter a proposed delivery");
+Check(ExpertDeliveryPreviewPlan.Build([deliveryLow with {ItemLevel=0}],600,0,90000).Items.Count==0,
+    "Unknown item levels cannot enter a proposed delivery");
+var duplicateDelivery=ExpertDeliveryPreviewPlan.Build([deliveryLow,deliveryLow],600,0,90000);
+Check(duplicateDelivery.Items.Count==1 && duplicateDelivery.StopReason.Contains("异常"),
+    "A duplicate physical inventory source stops the preview plan");
+Check(ExpertDeliveryPreviewPlan.Build([],600,0,90000).Items.Count==0, "An empty delivery list remains empty");
+Check(ExpertDeliveryPreviewPlan.TryParseSeals("71,385/90,000",out var heldSeals,out var maxSeals)
+    && heldSeals==71385 && maxSeals==90000, "The observed CN native seal balance parses correctly");
+Check(!ExpertDeliveryPreviewPlan.TryParseSeals("正在加载",out _,out _)
+    && !ExpertDeliveryPreviewPlan.TryParseSeals("90001/90000",out _,out _)
+    && !ExpertDeliveryPreviewPlan.TryParseSeals("0/0",out _,out _), "Unavailable or invalid seal balances cannot authorize a preview plan");
+bool RejectDelivery(int stopLevel,long held,long max)
+{
+    try { ExpertDeliveryPreviewPlan.Build([deliveryLow],stopLevel,held,max); return false; }
+    catch(InvalidOperationException) { return true; }
+}
+Check(RejectDelivery(0,0,90000) && RejectDelivery(10000,0,90000), "Out-of-range stopping levels are rejected");
+Check(RejectDelivery(600,-1,90000) && RejectDelivery(600,90001,90000), "Invalid currency snapshots are rejected");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)
