@@ -74,7 +74,15 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
                 || Plugin.Conditions[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas]
                 || Plugin.Conditions[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas51])
             { Stop("角色或军团已改变。"); return; }
-            if (Environment.TickCount64 > deadline) { Stop("等待游戏响应超时，未重复提交。"); return; }
+            if (Environment.TickCount64 > deadline)
+            {
+                Plugin.Log.Warning("Expert delivery timeout: phase={Phase}, item={Item}, index={Index}, HQ={HQ}, hqClickSent={Sent}, "
+                    + "yesno={Yesno}, reward={Reward}, list={List}, sourceMatches={Source}, sealsBefore={Before}, sealsNow={Now}.",
+                    phase,current?.Name ?? "<none>",index,current?.Key.HighQuality ?? false,hqConfirmed,Has("SelectYesno"),
+                    Has("GrandCompanySupplyReward"),plugin.Delivery.ContextOpen,
+                    current != null && SourceMatches(current.Key),before,Balance(out _));
+                Stop("等待游戏响应超时，未重复提交；详情见 /xllog。"); return;
+            }
             if (phase == Phase.Select) SelectNext();
             else if (phase == Phase.Dialog) ConfirmDialog();
             else if (phase == Phase.Result) WaitResult();
@@ -165,7 +173,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             CheckCapacity();
             if (dialog->YesButton==null || !dialog->YesButton->IsEnabled) return;
             hqConfirmed=true; // Never click the same HQ confirmation twice.
-            if (!OutfitAutoCompleter.ClickButton(yesno,dialog->YesButton))
+            if (!ClickDeliveryButton(yesno,dialog->YesButton))
                 throw new InvalidOperationException("未找到 HQ 确认按钮事件。");
             return;
         }
@@ -201,8 +209,25 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         }
         if (reward->DeliverButton==null || !reward->DeliverButton->IsEnabled) return;
         before=held; SetPhase(Phase.Result); // Latch before the irreversible native confirmation.
-        if (!OutfitAutoCompleter.ClickButton((AtkUnitBase*)reward,reward->DeliverButton))
+        if (!ClickDeliveryButton((AtkUnitBase*)reward,reward->DeliverButton))
             throw new InvalidOperationException("未找到原生提交按钮事件。");
+    }
+    private static bool ClickDeliveryButton(AtkUnitBase* addon, AtkComponentButton* button)
+    {
+        if (addon == null || button == null || !button->IsEnabled || button->OwnerNode == null
+            || !button->OwnerNode->AtkResNode.IsVisible()) return false;
+        var evt = button->OwnerNode->AtkResNode.AtkEventManager.Event;
+        for (var i = 0; evt != null && i < 64; i++, evt = evt->NextEvent)
+        {
+            if (evt->State.EventType != AtkEventType.ButtonClick || evt->Listener != (AtkEventListener*)addon) continue;
+            // Match the addon-button delivery used by ClickAddonButton: keep the registered
+            // event and parameter, and invoke the owning addon listener via ReceiveEvent.
+            Plugin.Log.Information("Expert delivery button event: addon={Addon}, param={Param}, flags={Flags}.",
+                addon->Id,evt->Param,evt->State.StateFlags);
+            addon->ReceiveEvent(evt->State.EventType,(int)evt->Param,evt);
+            return true; // Dispatch attempted; only a native transition/result acknowledges it.
+        }
+        return false;
     }
     private void CheckCapacity()
     {

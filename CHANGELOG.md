@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.31 — 2026-10-26
+
+· 调整筹备确认按钮的点击方式，补充卡住时的诊断日志；待实机验证。
+
+### English
+
+· Adjust expert-delivery confirmation clicks and add timeout diagnostics; in-game verification pending.
+
 ## 0.1.0.30 — 2026-10-25
 
 · 修复连续筹备的装备行刷新等待，明确奖励页不匹配提示。
