@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.29 — 2026-10-25
+
+· 修复筹备提交找不到原生装备行的问题。
+
+### English
+
+· Fix expert delivery failing to locate the native equipment row.
+
 ## 0.1.0.28 — 2026-10-25
 
 · 筹备稀有品增加实际提交和停止按钮，默认停止品级为 660。

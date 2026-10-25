@@ -25,6 +25,10 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
     private long before;
     private bool hqConfirmed;
     private string? error;
+    private CompletionItemKey? locating;
+    private bool searchStarted;
+    private int lastScroll;
+    private long locateAfter;
     internal bool IsRunning => phase != Phase.Idle;
     internal bool WaitingForNative => phase is Phase.Dialog or Phase.Result;
     internal string Status { get; private set; } = "";
@@ -41,7 +45,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             var player = PlayerState.Instance();
             if (player == null || player->GrandCompany == 0) throw new InvalidOperationException("军团数据未就绪。");
             company = player->GrandCompany; character = Plugin.Player.ContentId; territory = Plugin.ClientState.TerritoryType;
-            approved = plan.Items.ToArray(); index = 0; stopLevel = level; error = null; current = null;
+            approved = plan.Items.ToArray(); index = 0; stopLevel = level; error = null; current = null; locating = null;
             reader.Reset(); SetPhase(Phase.Select);
             Status = $"准备提交 {approved.Length} 件，停止品级 {stopLevel}。";
         }
@@ -90,27 +94,50 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         var addon = (AddonGrandCompanySupplyList*)handle.Address;
         var list = addon->ExpertDeliveryList;
         if (list == null || list->ListLength is < 1 or > 4096) return;
-        var matches = new List<int>();
-        for (var row=0; row<list->ListLength; row++)
+        if (locating != current.Key)
+        { locating = current.Key; searchStarted = false; lastScroll = -1; locateAfter = 0; }
+        if (Environment.TickCount64 < locateAfter) return;
+        var rows = new List<ExpertDeliveryNativeRow>();
+        var visited = new HashSet<nint>();
+        if (list->ItemRendererList == null || list->AllocatedItemRendererListLength is < 0 or > 4096) return;
+        for (var slot=0; slot<Math.Min(list->ListLength,list->AllocatedItemRendererListLength); slot++)
         {
-            var text = "";
-            if (list->ItemLabels != null)
+            var renderer=list->ItemRendererList[slot].AtkComponentListItemRenderer;
+            if (renderer==null || !visited.Add((nint)renderer) || renderer->ListItemIndex<0
+                || renderer->ListItemIndex>=list->ListLength || renderer->OwnerNode==null
+                || !renderer->OwnerNode->AtkResNode.IsVisible()) continue;
+            var uld=&renderer->UldManager;
+            if (uld->NodeList==null || uld->NodeListCount>100) continue;
+            var name=""; var reward=-1;
+            for (var n=0;n<uld->NodeListCount;n++)
             {
-                var label = list->GetItemLabel(row);
-                if ((byte*)label != null) text = label.AsDalamudSeString().TextValue;
+                var node=uld->NodeList[n];
+                if (node==null || node->Type!=NodeType.Text || node->NodeId>=100_000_000) continue;
+                var text=SeString.Parse(((AtkTextNode*)node)->NodeText.AsSpan()).TextValue;
+                if (ExpertDeliverySubmitPolicy.NameKey(text)==ExpertDeliverySubmitPolicy.NameKey(current.Name)) name=text;
+                if (int.TryParse(text.Replace(",",""),out var number) && number==current.SealReward) reward=number;
             }
-            // The expert-delivery ULD also supplies names in its dedicated AtkValue array.
-            if (string.IsNullOrEmpty(text) && addon->AtkValues != null && addon->AtkValuesCount>105+row
-                && addon->AtkValues[105+row].Type==AtkValueType.String)
-                text=addon->AtkValues[105+row].String.AsDalamudSeString().TextValue;
-            if (ExpertDeliverySubmitPolicy.NameKey(text)==ExpertDeliverySubmitPolicy.NameKey(current.Name)) matches.Add(row);
+            if (name.Length>0) rows.Add(new(renderer->ListItemIndex,name,reward,!list->ItemRendererList[slot].IsDisabled));
         }
-        if (matches.Count!=1) throw new InvalidOperationException("无法唯一匹配原生装备行，未提交；请先整理同名副本。");
+        var selected=ExpertDeliverySubmitPolicy.FindNativeRow(rows,current.Name,current.SealReward,list->ListLength);
+        if (selected==-2) throw new InvalidOperationException("原生列表存在多个同名同奖励的装备行，未提交。");
+        if (selected<0)
+        {
+            var scroll=list->ScrollBarComponent;
+            if (scroll==null) throw new InvalidOperationException("原生行尚未显示且无法滚动，未提交。");
+            var next=searchStarted ? Math.Min(scroll->ScrollMaxPosition,lastScroll+Math.Max(1,list->NumVisibleItems-1)) : 0;
+            if (searchStarted && next<=lastScroll)
+                throw new InvalidOperationException("已扫描原生列表，未找到目标装备与奖励，未提交。");
+            searchStarted=true; lastScroll=next; scroll->SetScrollPosition(next);
+            locateAfter=Environment.TickCount64+180;
+            Status=$"正在定位原生装备行：{current.Name}";
+            return;
+        }
         if (!Live(current)) throw new InvalidOperationException("装备已移动、穿戴或登记到职业配装。");
         before = Balance(out _); hqConfirmed = false;
         SetPhase(Phase.Dialog); // The native click may finalize the list immediately.
         Status = $"正在提交 {index} / {approved.Length} 件：{current.Name}（品级 {current.ItemLevel}）";
-        list->DispatchItemEvent(matches[0],AtkEventType.ListItemClick);
+        list->DispatchItemEvent(selected,AtkEventType.ListItemClick);
     }
     private void ConfirmDialog()
     {

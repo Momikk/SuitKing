@@ -471,6 +471,23 @@ Check(ExpertDeliverySubmitPolicy.Acknowledged(true,false,false,1000,2035,1035),
     "Source removal and the expected seal gain acknowledge one completed expert delivery");
 Check(ExpertDeliverySubmitPolicy.NameKey("甲\uE03C")=="甲" && ExpertDeliverySubmitPolicy.NameKey("甲")!="甲乙",
     "HQ icons are ignored for exact name identity without accepting partial names");
+var nativeMaskRows = new ExpertDeliveryNativeRow[]{new(0,"瘟疫医生面具",1064),new(6,"其他装备",1700)};
+Check(ExpertDeliverySubmitPolicy.FindNativeRow(nativeMaskRows,"瘟疫医生面具",1064,55)==0,
+    "Observed native renderer text resolves Plague Doctor's Mask to row zero without AtkValue names");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(6,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==6,
+    "Native selection uses the recycled renderer's real item index rather than its array slot");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064),new(0,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==0,
+    "Multiple renderer references to the same actual row do not become duplicate gear");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064),new(1,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==-2,
+    "Distinct identical native rows remain ambiguous and cannot be guessed");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow(nativeMaskRows,"瘟疫医生面具",1035,55)==-1,
+    "Matching item text with a different displayed reward cannot be selected");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064,false)],"瘟疫医生面具",1064,55)==-1,
+    "Disabled native rows cannot be selected");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(-1,"瘟疫医生面具",1064),new(55,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==-1,
+    "Recycled rows outside current native list bounds cannot be selected");
+Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具复制品",1064)],"瘟疫医生面具",1064,55)==-1,
+    "Only exact item names select a native row, never partial names");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)
