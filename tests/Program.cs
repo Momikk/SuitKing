@@ -488,6 +488,22 @@ Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(-1,"瘟疫医生面具",1064
     "Recycled rows outside current native list bounds cannot be selected");
 Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具复制品",1064)],"瘟疫医生面具",1064,55)==-1,
     "Only exact item names select a native row, never partial names");
+var deliveryRowsGate = new ExpertDeliveryRowGate();
+Check(!deliveryRowsGate.Observe("old:0=红莲细剑;1=罗刹大斧;2=实用主义",1000),
+    "The first native row snapshot cannot immediately dispatch a delivery event");
+Check(!deliveryRowsGate.Observe("old:0=红莲细剑;1=罗刹大斧;2=实用主义",1100),
+    "Two adjacent frames do not bypass native row settling time");
+Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1150),
+    "A native list rebuild restarts the stability gate after a successful delivery");
+Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1300),
+    "A newly shifted mapping is not used before it has settled");
+Check(deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1370),
+    "Only a stable refreshed mapping permits selecting the next target");
+deliveryRowsGate.Reset();
+Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",2000),
+    "Reopening the list or scrolling requires a new stable snapshot");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,false,1638),
+    "A different reward-page item never receives final confirmation even after an owned HQ prompt");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

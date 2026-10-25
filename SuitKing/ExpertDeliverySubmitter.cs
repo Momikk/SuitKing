@@ -14,6 +14,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
     private enum Phase { Idle, Select, Dialog, Result }
     private Phase phase;
     private readonly ExpertDeliveryPreviewReader reader = new();
+    private readonly ExpertDeliveryRowGate rowGate = new();
     private ExpertDeliveryCandidate[] approved = [];
     private ExpertDeliveryCandidate? current;
     private int index;
@@ -46,7 +47,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             if (player == null || player->GrandCompany == 0) throw new InvalidOperationException("军团数据未就绪。");
             company = player->GrandCompany; character = Plugin.Player.ContentId; territory = Plugin.ClientState.TerritoryType;
             approved = plan.Items.ToArray(); index = 0; stopLevel = level; error = null; current = null; locating = null;
-            reader.Reset(); SetPhase(Phase.Select);
+            reader.Reset(); rowGate.Reset(); SetPhase(Phase.Select);
             Status = $"准备提交 {approved.Length} 件，停止品级 {stopLevel}。";
         }
         catch (Exception ex) { plugin.DeliveryPreview.FinishSubmission(ex.Message); }
@@ -98,6 +99,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         { locating = current.Key; searchStarted = false; lastScroll = -1; locateAfter = 0; }
         if (Environment.TickCount64 < locateAfter) return;
         var rows = new List<ExpertDeliveryNativeRow>();
+        var mapping = new List<string>();
         var visited = new HashSet<nint>();
         if (list->ItemRendererList == null || list->AllocatedItemRendererListLength is < 0 or > 4096) return;
         for (var slot=0; slot<Math.Min(list->ListLength,list->AllocatedItemRendererListLength); slot++)
@@ -109,16 +111,22 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             var uld=&renderer->UldManager;
             if (uld->NodeList==null || uld->NodeListCount>100) continue;
             var name=""; var reward=-1;
+            var texts = new List<string>();
             for (var n=0;n<uld->NodeListCount;n++)
             {
                 var node=uld->NodeList[n];
                 if (node==null || node->Type!=NodeType.Text || node->NodeId>=100_000_000) continue;
                 var text=SeString.Parse(((AtkTextNode*)node)->NodeText.AsSpan()).TextValue;
+                texts.Add(text);
                 if (ExpertDeliverySubmitPolicy.NameKey(text)==ExpertDeliverySubmitPolicy.NameKey(current.Name)) name=text;
                 if (int.TryParse(text.Replace(",",""),out var number) && number==current.SealReward) reward=number;
             }
+            mapping.Add($"{slot}:{renderer->ListItemIndex}:"+string.Join("|",texts));
             if (name.Length>0) rows.Add(new(renderer->ListItemIndex,name,reward,!list->ItemRendererList[slot].IsDisabled));
         }
+        var fingerprint=$"{handle.Address}:{list->ListLength}:{addon->SelectedSortBy}:{addon->SelectedFilter}:"+string.Join(";",mapping);
+        if (!rowGate.Observe(fingerprint,Environment.TickCount64))
+        { Status=$"等待原生装备行刷新稳定：{current.Name}"; return; }
         var selected=ExpertDeliverySubmitPolicy.FindNativeRow(rows,current.Name,current.SealReward,list->ListLength);
         if (selected==-2) throw new InvalidOperationException("原生列表存在多个同名同奖励的装备行，未提交。");
         if (selected<0)
@@ -128,7 +136,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             var next=searchStarted ? Math.Min(scroll->ScrollMaxPosition,lastScroll+Math.Max(1,list->NumVisibleItems-1)) : 0;
             if (searchStarted && next<=lastScroll)
                 throw new InvalidOperationException("已扫描原生列表，未找到目标装备与奖励，未提交。");
-            searchStarted=true; lastScroll=next; scroll->SetScrollPosition(next);
+            searchStarted=true; lastScroll=next; rowGate.Reset(); scroll->SetScrollPosition(next);
             locateAfter=Environment.TickCount64+180;
             Status=$"正在定位原生装备行：{current.Name}";
             return;
@@ -178,10 +186,19 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         var itemName=reward->AtkValues[4].String.AsDalamudSeString().TextValue;
         var held=Balance(out var max);
         var actual=current with {Protected=!Live(current)};
+        var nameMatches=ExpertDeliverySubmitPolicy.NameKey(itemName)==ExpertDeliverySubmitPolicy.NameKey(current.Name);
+        var dialogReward=checked((int)reward->AtkValues[9].UInt);
         if (!ExpertDeliverySubmitPolicy.CanConfirm(current,actual,stopLevel,held,max,ownedReward && title=="筹备稀有品",
-            ExpertDeliverySubmitPolicy.NameKey(itemName)==ExpertDeliverySubmitPolicy.NameKey(current.Name),
-            checked((int)reward->AtkValues[9].UInt)) || current.Key.HighQuality && !hqConfirmed)
-            throw new InvalidOperationException("奖励窗口、品级、军票或装备来源不符，未确认。");
+            nameMatches,dialogReward) || current.Key.HighQuality && !hqConfirmed)
+        {
+            Plugin.Log.Warning("Expert delivery reward rejected: expected={Name}/{Item}/{Container}/{Slot}, HQ={HQ}, hqConfirmed={Confirmed}, "
+                + "actual={Actual}, reward={ExpectedReward}/{ActualReward}, owned={Owned}, live={Live}, seals={Held}/{Max}.",
+                current.Name,current.Key.ItemId,current.Key.Container,current.Key.Slot,current.Key.HighQuality,hqConfirmed,
+                itemName,current.SealReward,dialogReward,ownedReward,!actual.Protected,held,max);
+            throw new InvalidOperationException(!nameMatches
+                ? $"奖励页为「{itemName}」，与待提交「{current.Name}」不符，未确认。"
+                : "奖励、品级、军票或装备来源不符，未确认；详情见 /xllog。");
+        }
         if (reward->DeliverButton==null || !reward->DeliverButton->IsEnabled) return;
         before=held; SetPhase(Phase.Result); // Latch before the irreversible native confirmation.
         if (!OutfitAutoCompleter.ClickButton((AtkUnitBase*)reward,reward->DeliverButton))
@@ -203,7 +220,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         var held=Balance(out _);
         if (!ExpertDeliverySubmitPolicy.Acknowledged(readable,SourceMatches(current.Key),false,before,held,current.SealReward)) return;
         if (!plugin.Delivery.ContextOpen) return; // Wait for the native list to return before advancing.
-        index++; current=null; reader.Reset(); SetPhase(Phase.Select);
+        index++; current=null; reader.Reset(); rowGate.Reset(); SetPhase(Phase.Select);
     }
     private long Balance(out long max)
     {

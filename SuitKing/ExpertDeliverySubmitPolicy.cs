@@ -32,3 +32,21 @@ internal static class ExpertDeliverySubmitPolicy
         => sourceReadable && !sourceStillPresent && !dialogOpen && reward > 0 && after >= before
             && after-before >= reward;
 }
+
+// Native inventory/agent data can settle before the list renderers are redrawn.
+// Require the complete visible row mapping to remain unchanged over separate
+// framework updates before dispatching an item-index event.
+internal sealed class ExpertDeliveryRowGate
+{
+    private string? previous;
+    private long since;
+    private int observations;
+    internal bool Observe(string fingerprint, long now)
+    {
+        if (fingerprint != previous)
+        { previous=fingerprint; since=now; observations=1; return false; }
+        observations++;
+        return observations>=2 && now-since>=220;
+    }
+    internal void Reset() { previous=null; observations=0; since=0; }
+}

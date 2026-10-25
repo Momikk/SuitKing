@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.30 — 2026-10-25
+
+· 修复连续筹备的装备行刷新等待，明确奖励页不匹配提示。
+
+### English
+
+· Wait for expert-delivery rows to settle between submissions and clarify reward mismatches.
+
 ## 0.1.0.29 — 2026-10-25
 
 · 修复筹备提交找不到原生装备行的问题。
