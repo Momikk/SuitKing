@@ -21,6 +21,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService] internal static ITextureProvider Textures { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle Addons { get; private set; } = null!;
     [PluginService] internal static IDataManager Data { get; private set; } = null!;
+    [PluginService] internal static IToastGui Toasts { get; private set; } = null!;
     [PluginService] internal static IPlayerState Player { get; private set; } = null!;
     [PluginService] internal static ICondition Conditions { get; private set; } = null!;
     [PluginService] internal static IObjectTable Objects { get; private set; } = null!;
@@ -69,7 +70,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 InternalName = "SuitKingNative", Title = "套装之王 SuitKing", Size = new(760, 520),
             };
             QualityPreview = new QualityPreviewWindow(this) { Title = "处理品质冲突", InternalName = "SuitKingQualityPreview" };
-            DeliveryPreview = new ExpertDeliveryPreviewWindow(this) { Title = "筹备稀有品预览（不提交）", InternalName = "SuitKingDeliveryPreview", Size = new(660, 480) };
+            DeliveryPreview = new ExpertDeliveryPreviewWindow(this) { Title = "筹备稀有品", InternalName = "SuitKingDeliveryPreview", Size = new(660, 480) };
             Delivery = new ExpertDeliveryPreviewController(this);
             Delivery.Initialize();
             CommandsAdd(CommandName);

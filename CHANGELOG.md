@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.28 — 2026-10-25
+
+· 筹备稀有品增加实际提交和停止按钮，默认停止品级为 660。
+
+### English
+
+· Add expert-delivery submission and stop controls; default stopping item level is 660.
+
 ## 0.1.0.27 — 2026-10-25
 
 · 增加筹备稀有品预览：按品级筛选并排除职业配装，仅展示，不提交。

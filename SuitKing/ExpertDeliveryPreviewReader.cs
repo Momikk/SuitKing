@@ -11,6 +11,8 @@ namespace SuitKing;
 internal sealed unsafe class ExpertDeliveryPreviewReader
 {
     private readonly GearsetSnapshotGate gate = new();
+    internal long Held { get; private set; }
+    internal long Maximum { get; private set; }
     internal void Reset() => gate.Clear();
     internal bool TryRead(int stopLevel, out ExpertDeliveryPreviewPlan? plan)
     {
@@ -34,6 +36,7 @@ internal sealed unsafe class ExpertDeliveryPreviewReader
         var text = addon->SealCountTextNode == null ? "" : SeString.Parse(addon->SealCountTextNode->NodeText.AsSpan()).TextValue;
         if (!ExpertDeliveryPreviewPlan.TryParseSeals(text, out var held, out var maximum))
             throw new InvalidOperationException("无法读取军票余额，未生成清单。");
+        Held = held; Maximum = maximum;
         var rows = new List<ExpertDeliveryCandidate>();
         var sheet = Plugin.Data.GetExcelSheet<Item>();
         for (var index = 0; index < agent->NumItems; index++)

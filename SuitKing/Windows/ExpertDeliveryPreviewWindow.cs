@@ -11,11 +11,13 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
 {
     private NumericInputNode? level;
     private TextButtonNode? preview;
+    private TextButtonNode? submit;
+    private ExpertDeliveryPreviewPlan? approved;
     private TextNode? summary;
     private TextNode? stop;
     private ListNode<ExpertDeliveryCandidate, ExpertDeliveryPreviewRow>? list;
     private readonly List<TextNode> labels = [];
-    private int lastLevel = 600;
+    private int lastLevel = 660;
     internal void Present() { if (!IsAllocated) Open(); }
     protected override void OnSetup(AtkUnitBase* addon, Span<AtkValue> values)
     {
@@ -26,14 +28,19 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
                 FontSize = 13, AlignmentType = AlignmentType.Left };
             labels.Add(node); AddNode(node);
         }
-        Label("只读 demo · 不会提交装备 · 固定排除穿戴及职业配装物品",0);
-        Label("停止品级（仅预览低于此值的装备）",30);
-        level = new NumericInputNode { Position = origin + new Vector2(292,26), Size = new(104,28), Min = 1, Max = 9999, Value = lastLevel };
+        Label("先生成预览，再点击提交 · 固定排除穿戴及职业配装物品",0);
+        Label("停止品级（仅提交低于此值的装备）",30);
+        level = new NumericInputNode { Position = origin + new Vector2(270,26), Size = new(96,28), Min = 1, Max = 9999, Value = lastLevel };
         level.OnValueUpdate = value => { lastLevel = value; plugin.Delivery.CancelPending(); SetStatus("品级已改变，请重新生成预览。"); };
         AddNode(level);
-        preview = new TextButtonNode { String = "生成预览", Position = origin + new Vector2(410,26), Size = new(130,28),
+        preview = new TextButtonNode { String = "生成预览", Position = origin + new Vector2(378,26), Size = new(112,28),
             OnClick = () => plugin.Delivery.Request(level.Value) };
         AddNode(preview);
+        submit = new TextButtonNode { String = "提交", Position = origin + new Vector2(502,26), Size = new(100,28),
+            IsEnabled = false, TextTooltip = "将预览中的装备逐件换取军票；装备会被消耗，再次点击停止。",
+            OnClick = () => { if (plugin.Delivery.Submission.IsRunning) plugin.Delivery.Submission.Stop("已停止；已确认的提交仍可能完成。");
+                else if (approved != null) plugin.Delivery.Submission.Start(lastLevel, approved); } };
+        AddNode(submit);
         summary = new TextNode { Position = origin + new Vector2(0,62), Size = new(ContentSize.X,24), FontSize = 13, AlignmentType = AlignmentType.Left };
         AddNode(summary);
         var rowWidth = ContentSize.X - 16;
@@ -57,23 +64,40 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     internal void SetStatus(string value)
     {
         if (!IsAllocated || summary == null) return;
+        approved = null;
         summary.String = value;
+        if (submit != null) submit.IsEnabled = false;
         if (list != null) { list.OptionsList = []; list.NoResultsTextNode.String = value; }
         if (stop != null) stop.String = "";
     }
     internal void ShowPlan(ExpertDeliveryPreviewPlan value)
     {
         if (!IsAllocated || list == null || summary == null || stop == null) return;
+        approved = value;
         list.OptionsList = value.Items.ToList();
         list.NoResultsTextNode.String = "没有拟提交的装备。";
         summary.String = $"拟提交 {value.Items.Count} 件 · 预计获得 {value.Items.Sum(item => (long)item.SealReward):N0} 军票 · 预计余额 {value.SealsAfter:N0}";
         stop.String = value.StopReason; stop.TextTooltip = value.StopReason;
     }
+    protected override void OnUpdate(AtkUnitBase* addon)
+    {
+        var running = plugin.Delivery.Submission.IsRunning;
+        if (level != null) level.IsEnabled = !running;
+        if (preview != null) preview.IsEnabled = !running;
+        if (submit != null) { submit.String = running ? "停止提交" : "提交"; submit.IsEnabled = running || approved?.Items.Count > 0; }
+        if (running && summary != null) summary.String = plugin.Delivery.Submission.Status;
+    }
+    internal void FinishSubmission(string status)
+    {
+        SetStatus(status);
+    }
     protected override void OnFinalize(AtkUnitBase* addon)
     {
+        plugin.Delivery.Submission.Stop("预览窗口已关闭。");
         plugin.Delivery.CancelPending();
+        approved = null;
         foreach (var node in labels) node.Dispose(); labels.Clear();
-        level?.Dispose(); preview?.Dispose(); summary?.Dispose(); stop?.Dispose(); list?.Dispose();
+        level?.Dispose(); preview?.Dispose(); submit?.Dispose(); submit = null; summary?.Dispose(); stop?.Dispose(); list?.Dispose();
         level = null; preview = null; summary = stop = null; list = null;
     }
 }

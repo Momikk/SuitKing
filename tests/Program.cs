@@ -435,6 +435,42 @@ bool RejectDelivery(int stopLevel,long held,long max)
 }
 Check(RejectDelivery(0,0,90000) && RejectDelivery(10000,0,90000), "Out-of-range stopping levels are rejected");
 Check(RejectDelivery(600,-1,90000) && RejectDelivery(600,90001,90000), "Invalid currency snapshots are rejected");
+Check(ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,true,1035),
+    "Expert delivery confirms only an owned matching item and exact reward below the stopping level");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,180,0,90000,true,true,1035),
+    "The exact stopping item level cannot be submitted");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,89000,90000,true,true,1035),
+    "A current seal-cap overflow blocks final confirmation");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,90000,90000,true,true,1035),
+    "Full seals block final confirmation");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow with {Protected=true},660,0,90000,true,true,1035),
+    "Registering an item to a gearset after preview blocks final confirmation");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow with {Key=deliveryLow.Key with {Slot=2}},660,0,90000,true,true,1035),
+    "Moving an item after preview blocks final confirmation");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow with {Key=deliveryLow.Key with {HighQuality=true}},660,0,90000,true,true,1035),
+    "Changing quality after preview blocks final confirmation");
+Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,false,true,1035)
+    && !ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,false,1035)
+    && !ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,true,1064),
+    "A foreign reward window, different item name, or different reward cannot be confirmed");
+Check(ExpertDeliverySubmitPolicy.IsHqPrompt(true,true,4,"确定要交易优质道具吗？"),
+    "The observed owned CN HQ prompt is accepted for an HQ source");
+Check(!ExpertDeliverySubmitPolicy.IsHqPrompt(false,true,4,"确定要交易优质道具吗？")
+    && !ExpertDeliverySubmitPolicy.IsHqPrompt(true,false,4,"确定要交易优质道具吗？")
+    && !ExpertDeliverySubmitPolicy.IsHqPrompt(true,true,5,"确定要交易优质道具吗？")
+    && !ExpertDeliverySubmitPolicy.IsHqPrompt(true,true,4,"确定要丢弃优质道具吗？"),
+    "NQ sources, foreign owners, wrong events, and unrelated HQ prompts never receive Yes");
+Check(!ExpertDeliverySubmitPolicy.Acknowledged(true,false,false,1000,1000,1035),
+    "Disappearing inventory without a seal gain cannot acknowledge expert delivery");
+Check(!ExpertDeliverySubmitPolicy.Acknowledged(true,true,false,1000,2035,1035),
+    "A seal gain without removal of the source cannot acknowledge expert delivery");
+Check(!ExpertDeliverySubmitPolicy.Acknowledged(false,false,false,1000,2035,1035)
+    && !ExpertDeliverySubmitPolicy.Acknowledged(true,false,true,1000,2035,1035),
+    "Unloaded inventory or an open native dialog blocks advancing to the next item");
+Check(ExpertDeliverySubmitPolicy.Acknowledged(true,false,false,1000,2035,1035),
+    "Source removal and the expected seal gain acknowledge one completed expert delivery");
+Check(ExpertDeliverySubmitPolicy.NameKey("甲\uE03C")=="甲" && ExpertDeliverySubmitPolicy.NameKey("甲")!="甲乙",
+    "HQ icons are ignored for exact name identity without accepting partial names");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)
