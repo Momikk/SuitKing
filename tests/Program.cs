@@ -504,6 +504,35 @@ Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",2000),
     "Reopening the list or scrolling requires a new stable snapshot");
 Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,false,1638),
     "A different reward-page item never receives final confirmation even after an owned HQ prompt");
+var traceInfo = new List<string>();
+var traceWarnings = new List<string>();
+long traceNow = 100;
+var deliveryTrace = new ExpertDeliveryTrace(traceInfo.Add,traceWarnings.Add,() => traceNow);
+deliveryTrace.Begin(); deliveryTrace.Emit("Start","count=2"); deliveryTrace.Emit("SelectRow","row=1");
+Check(traceInfo.Count==2 && traceInfo[0].Contains("seq=1") && traceInfo[1].Contains("seq=2")
+    && traceInfo[0].Split(" seq=")[0]==traceInfo[1].Split(" seq=")[0],
+    "A batch correlates lifecycle and selection records with a run ID and ordered sequence");
+deliveryTrace.Wait("pending"); var traceCount=traceInfo.Count;
+for (var tick=0;tick<100;tick++) deliveryTrace.Wait("pending changed "+tick);
+Check(traceInfo.Count==traceCount,"Changing per-frame waits cannot bypass diagnostic throttling");
+traceNow=2099; deliveryTrace.Wait("pending");
+Check(traceInfo.Count==traceCount,"Wait diagnostics remain throttled before two seconds");
+traceNow=2100; deliveryTrace.Wait("pending");
+Check(traceInfo.Count==traceCount+1,"A persistent wait reports again after two seconds");
+deliveryTrace.ResetStep(); deliveryTrace.Wait("new phase");
+Check(traceInfo.Count==traceCount+2,"A new phase immediately reports its first wait");
+deliveryTrace.Dialog("HQ accepted"); var dialogCount=traceInfo.Count;
+deliveryTrace.Dialog("HQ accepted");
+Check(traceInfo.Count==dialogCount,"An unchanged native confirmation is not logged every frame");
+deliveryTrace.Dialog("HQ rejected",true);
+Check(traceWarnings.Count==1 && traceWarnings[0].Contains("HQ rejected"),"Rejected confirmation details always reach warning logs");
+Check(ExpertDeliveryTrace.Clean("row1\nrow2\r\t")=="row1\\nrow2\\r\\t",
+    "Native text cannot inject extra log lines");
+Check(ExpertDeliveryTrace.Clean(new string('x',1000),10).Length<30,
+    "Unexpectedly large native text remains bounded");
+deliveryTrace.Begin(); deliveryTrace.Emit("Start","new batch");
+Check(traceInfo[^1].Contains("seq=1") && traceInfo[^1].Split(" seq=")[0]!=traceInfo[0].Split(" seq=")[0],
+    "A restarted batch gets a fresh run ID and sequence");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

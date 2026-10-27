@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.32 — 2026-10-27
+
+· 完善筹备稀有品诊断日志，记录选行、确认、提交结果及停止原因。
+
+### English
+
+· Expand expert-delivery diagnostics for row selection, confirmations, results and stop reasons.
+
 ## 0.1.0.31 — 2026-10-26
 
 · 调整筹备确认按钮的点击方式，补充卡住时的诊断日志；待实机验证。

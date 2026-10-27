@@ -7,6 +7,7 @@
     <DalamudHome Condition="'$(DalamudHome)' == ''">$(APPDATA)/XIVLauncherCN/addon/Hooks/dev</DalamudHome>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../SuitKing/ExpertDeliveryTrace.cs" Link="ExpertDeliveryTrace.cs" />
     <Compile Include="../SuitKing/ExpertDeliverySubmitPolicy.cs" Link="ExpertDeliverySubmitPolicy.cs" />
     <Compile Include="../SuitKing/ExpertDeliveryPreviewPlan.cs" Link="ExpertDeliveryPreviewPlan.cs" />
     <Compile Include="../SuitKing/ExistingOutfitCompletionPlan.cs" Link="ExistingOutfitCompletionPlan.cs" />
