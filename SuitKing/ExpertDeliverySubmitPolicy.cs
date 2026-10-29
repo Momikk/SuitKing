@@ -1,6 +1,6 @@
 namespace SuitKing;
 
-internal sealed record ExpertDeliveryNativeRow(int Index, string Name, int Reward, bool Enabled = true);
+internal readonly record struct ExpertDeliverySourceSelection(int EventKind, int Slot, uint Container, bool UpdateState = true);
 
 internal static class ExpertDeliverySubmitPolicy
 {
@@ -18,43 +18,14 @@ internal static class ExpertDeliverySubmitPolicy
             && string.Concat(prompt.Where(c => !char.IsWhiteSpace(c))) == "确定要交易优质道具吗？";
     internal static string NameKey(string text)
         => string.Concat(text.Where(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.PrivateUse));
-    // Renderers are recycled and may be referenced by several list slots. The
-    // renderer's ListItemIndex, not its slot in ItemRendererList, is authoritative.
-    internal static int FindNativeRow(IEnumerable<ExpertDeliveryNativeRow> rows, string name, int reward, int count)
+    internal static ExpertDeliverySourceSelection SelectSource(ExpertDeliveryCandidate expected, ExpertDeliveryCandidate fresh)
     {
-        var matches = rows.Where(row => row.Enabled && row.Index >= 0 && row.Index < count
-            && NameKey(row.Name) == NameKey(name) && row.Reward == reward)
-            .Select(row => row.Index).Distinct().ToArray();
-        return matches.Length == 1 ? matches[0] : matches.Length == 0 ? -1 : -2;
-    }
-    internal static bool HasStaleCompletedRow(int visibleCopies, ExpertDeliveryCandidate? completed,
-        IReadOnlyList<ExpertDeliveryCandidate> fresh)
-    {
-        if (completed==null || visibleCopies==0) return false;
-        var remaining=fresh.Count(item => NameKey(item.Name)==NameKey(completed.Name)
-            && item.SealReward==completed.SealReward);
-        return visibleCopies>remaining;
+        if (!SameTarget(expected,fresh) || expected.Key.ItemId==0 || expected.Key.Slot>sbyte.MaxValue)
+            throw new InvalidOperationException("筹备来源不匹配或格子超出原生范围，未选择装备。");
+        return new(3,expected.Key.Slot,expected.Key.Container,true);
     }
     internal static bool Acknowledged(bool sourceReadable, bool sourceStillPresent, bool dialogOpen,
         long before, long after, int reward)
         => sourceReadable && !sourceStillPresent && !dialogOpen && reward > 0 && after >= before
             && after-before >= reward;
-}
-
-// Native inventory/agent data can settle before the list renderers are redrawn.
-// Require the complete visible row mapping to remain unchanged over separate
-// framework updates before dispatching an item-index event.
-internal sealed class ExpertDeliveryRowGate
-{
-    private string? previous;
-    private long since;
-    private int observations;
-    internal bool Observe(string fingerprint, long now)
-    {
-        if (fingerprint != previous)
-        { previous=fingerprint; since=now; observations=1; return false; }
-        observations++;
-        return observations>=2 && now-since>=220;
-    }
-    internal void Reset() { previous=null; observations=0; since=0; }
 }

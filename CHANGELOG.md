@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.34 — 2026-10-29
+
+· 筹备改用原生左键的装备来源定位，避免旧列表造成错选或中断，并移除额外滚动与行等待。
+
+### English
+
+· Use native left-click source selection for deliveries, avoiding stale-row targeting and removing extra scrolling and row waits.
+
 ## 0.1.0.33 — 2026-10-29
 
 · 修复无品质冲突时按钮仍可用的问题；连续筹备增加旧列表校验与刷新，避免选行错位。

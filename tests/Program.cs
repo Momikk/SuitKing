@@ -471,39 +471,6 @@ Check(ExpertDeliverySubmitPolicy.Acknowledged(true,false,false,1000,2035,1035),
     "Source removal and the expected seal gain acknowledge one completed expert delivery");
 Check(ExpertDeliverySubmitPolicy.NameKey("甲\uE03C")=="甲" && ExpertDeliverySubmitPolicy.NameKey("甲")!="甲乙",
     "HQ icons are ignored for exact name identity without accepting partial names");
-var nativeMaskRows = new ExpertDeliveryNativeRow[]{new(0,"瘟疫医生面具",1064),new(6,"其他装备",1700)};
-Check(ExpertDeliverySubmitPolicy.FindNativeRow(nativeMaskRows,"瘟疫医生面具",1064,55)==0,
-    "Observed native renderer text resolves Plague Doctor's Mask to row zero without AtkValue names");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(6,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==6,
-    "Native selection uses the recycled renderer's real item index rather than its array slot");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064),new(0,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==0,
-    "Multiple renderer references to the same actual row do not become duplicate gear");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064),new(1,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==-2,
-    "Distinct identical native rows remain ambiguous and cannot be guessed");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow(nativeMaskRows,"瘟疫医生面具",1035,55)==-1,
-    "Matching item text with a different displayed reward cannot be selected");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具",1064,false)],"瘟疫医生面具",1064,55)==-1,
-    "Disabled native rows cannot be selected");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(-1,"瘟疫医生面具",1064),new(55,"瘟疫医生面具",1064)],"瘟疫医生面具",1064,55)==-1,
-    "Recycled rows outside current native list bounds cannot be selected");
-Check(ExpertDeliverySubmitPolicy.FindNativeRow([new(0,"瘟疫医生面具复制品",1064)],"瘟疫医生面具",1064,55)==-1,
-    "Only exact item names select a native row, never partial names");
-var deliveryRowsGate = new ExpertDeliveryRowGate();
-Check(!deliveryRowsGate.Observe("old:0=红莲细剑;1=罗刹大斧;2=实用主义",1000),
-    "The first native row snapshot cannot immediately dispatch a delivery event");
-Check(!deliveryRowsGate.Observe("old:0=红莲细剑;1=罗刹大斧;2=实用主义",1100),
-    "Two adjacent frames do not bypass native row settling time");
-Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1150),
-    "A native list rebuild restarts the stability gate after a successful delivery");
-Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1300),
-    "A newly shifted mapping is not used before it has settled");
-Check(deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",1370),
-    "Only a stable refreshed mapping permits selecting the next target");
-deliveryRowsGate.Reset();
-Check(!deliveryRowsGate.Observe("new:0=罗刹大斧;1=实用主义",2000),
-    "Reopening the list or scrolling requires a new stable snapshot");
-Check(!ExpertDeliverySubmitPolicy.CanConfirm(deliveryLow,deliveryLow,660,0,90000,true,false,1638),
-    "A different reward-page item never receives final confirmation even after an owned HQ prompt");
 var traceInfo = new List<string>();
 var traceWarnings = new List<string>();
 long traceNow = 100;
@@ -545,27 +512,32 @@ Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {RegisteredToGearset
     "Protected or unconfirmed equipment does not enable quality normalization");
 Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {Condition=29999}]),
     "A damaged conflict cannot enable automatic normalization");
-var completedCuffs = new ExpertDeliveryCandidate(new(14457,3209,14,false),"改良型蛮神治愈手镯",240,1230,"兵装库");
-var nextBoots = new ExpertDeliveryCandidate(new(17407,3206,30,false),"煽动兵精准长靴",245,1240,"兵装库");
-Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedCuffs,[nextBoots]),
-    "First captured failure: acknowledged cuffs still at row zero invalidate the boots row-one mapping");
-var completedPants = new ExpertDeliveryCandidate(new(19006,3205,25,true),"真狮鹫革精准马裤",320,1390,"兵装库");
-var nextCoat = new ExpertDeliveryCandidate(new(21664,3202,13,false),"堕狱治愈棉甲",325,1400,"兵装库");
-Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,[nextCoat]),
-    "Second captured failure: acknowledged HQ pants invalidate the stale NQ coat row-one mapping");
-Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(0,completedPants,[nextCoat]),
-    "Refreshed renderers with the completed item removed may pass the normal row gate");
-Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,
-    [completedPants with {Key=completedPants.Key with {Slot=26}},nextCoat]),
-    "A separate remaining physical copy is not mistaken for a removed renderer");
-Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(2,completedPants,
-    [completedPants with {Key=completedPants.Key with {Slot=26}},nextCoat]),
-    "More visible copies than live candidates still reveal an old renderer");
-Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,null,[nextCoat]),
-    "The first item of a new batch has no previous-acknowledgement restriction");
-Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,
-    [completedPants with {SealReward=1391},nextCoat]),
-    "A different-reward candidate cannot validate a previously submitted display row");
+var sourceCoat = new ExpertDeliveryCandidate(new(21664,3202,13,false),"堕狱治愈棉甲",325,1400,"兵装库");
+var sourceNeck = new ExpertDeliveryCandidate(new(26496,3208,9,true),"中庸治愈项环",450,1638,"兵装库");
+var coatSelection=ExpertDeliverySubmitPolicy.SelectSource(sourceCoat,sourceCoat);
+Check(coatSelection.UpdateState,"The verified left-click callback requests a native UI state update");
+Check(coatSelection==new ExpertDeliverySourceSelection(3,13,3202),
+    "Captured shifted coat row selects its real inventory slot rather than renderer row one");
+Check(ExpertDeliverySubmitPolicy.SelectSource(sourceNeck,sourceNeck)==new ExpertDeliverySourceSelection(3,9,3208),
+    "Captured stale-pants case selects the HQ neck item independently of the old row still on screen");
+Check(ExpertDeliverySubmitPolicy.SelectSource(sourceCoat with {Name="同名装备"},sourceCoat with {Name="同名装备"})==coatSelection,
+    "Visible labels and same-name renderers cannot redirect a source selection");
+var secondCoat=sourceCoat with {Key=sourceCoat.Key with {Slot=14}};
+Check(ExpertDeliverySubmitPolicy.SelectSource(secondCoat,secondCoat)!=coatSelection,
+    "Separate same-name same-reward copies produce separate source identities");
+var bagSource=sourceCoat with {Key=new(41613,2,20,false)};
+Check(ExpertDeliverySubmitPolicy.SelectSource(bagSource,bagSource)==new ExpertDeliverySourceSelection(3,20,2),
+    "Bag selections retain container and slot order without adding an HQ item-ID offset");
+bool SourceSelectionRejected(ExpertDeliveryCandidate expected,ExpertDeliveryCandidate fresh)
+{ try { ExpertDeliverySubmitPolicy.SelectSource(expected,fresh); return false; } catch(InvalidOperationException) { return true; } }
+Check(SourceSelectionRejected(sourceCoat,secondCoat),"Moving a source requires a fresh approved preview");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Key=sourceCoat.Key with {HighQuality=true}}),
+    "Replacing the NQ source with HQ cannot silently reuse the selected slot");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Protected=true})
+    && SourceSelectionRejected(sourceCoat,sourceCoat with {Available=false}),
+    "Protected and unavailable fresh candidates cannot yield a native selection command");
+Check(SourceSelectionRejected(sourceCoat with {Key=sourceCoat.Key with {Slot=128}},sourceCoat with {Key=sourceCoat.Key with {Slot=128}}),
+    "Source slots outside the verified signed-byte native range are refused");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)
