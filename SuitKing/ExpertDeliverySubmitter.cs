@@ -42,8 +42,8 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         {
             trace.Begin(); lastRows = "not captured"; lastSelection = "not dispatched";
             trace.Emit("StartRequested",$"version={typeof(Plugin).Assembly.GetName().Version}, count={plan.Items.Count}, stopLevel={level}");
-            if (!plugin.Delivery.ContextOpen || Has("GrandCompanySupplyReward") || Has("SelectYesno"))
-                throw new InvalidOperationException("请先关闭已有提交确认窗口。");
+            if (!plugin.Delivery.ContextOpen || Has("GrandCompanySupplyReward") || Has("SelectYesno") || ContextMenuOpen)
+                throw new InvalidOperationException("请先关闭已有提交确认窗口或右键菜单。");
             if (plugin.Completion.IsRunning || plugin.Creation.IsRunning || plugin.Quality.IsRunning || plugin.CabinetStore.IsRunning)
                 throw new InvalidOperationException("请先停止其他装备操作。");
             var player = PlayerState.Instance();
@@ -105,14 +105,16 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             trace.Emit("PlanMismatch",$"expected={Describe(current)}, refreshedFirst={Describe(plan.Items[0])}",true);
             throw new InvalidOperationException("清单顺序、来源或奖励已改变，请重新预览。");
         }
-        var command=ExpertDeliverySubmitPolicy.SelectSource(current,plan.Items[0]);
         var handle=Plugin.GameGui.GetAddonByName(ExpertDeliveryPreviewController.AddonName);
         if (handle.IsNull || !handle.IsReady || !handle.IsVisible) return;
         var addon=(AddonGrandCompanySupplyList*)handle.Address;
+        var nativeRows=ExpertDeliveryNativeRows.Read(addon);
+        if (nativeRows==null) { trace.Wait("phase=Select, waiting=native source records"); return; }
+        var command=ExpertDeliverySubmitPolicy.SelectSource(current,plan.Items[0],nativeRows);
         if (!Live(current)) throw new InvalidOperationException("装备已移动、穿戴或登记到职业配装。");
         before=Balance(out var capacity); hqConfirmed=false;
         trace.Emit("Target",$"step={index+1}/{approved.Length}, {Describe(current)}");
-        lastSelection=$"step={index+1}/{approved.Length}, target={Describe(current)}, route=NativeLeftClickSource, command={command.EventKind}, slotInt={command.Slot}, containerUInt={command.Container}, updateState={command.UpdateState}, seals={before}/{capacity}";
+        lastSelection=$"step={index+1}/{approved.Length}, target={Describe(current)}, route=NativeRecordLeftClick, command={command.EventKind}, nativeRow={command.RowIndex}, nativeCount={nativeRows.Length}, updateState={command.UpdateState}, seals={before}/{capacity}";
         trace.Emit("SelectSource",lastSelection);
         lastRows=CaptureRows(addon); // Diagnostic only: cached row text never determines the source.
         trace.Emit("RowsBeforeClick",lastRows);
@@ -120,13 +122,15 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         LogAgentTarget();
         AtkValue* values=stackalloc AtkValue[3];
         values[0]=new() {Type=AtkValueType.Int,Int=command.EventKind};
-        values[1]=new() {Type=AtkValueType.Int,Int=command.Slot};
-        values[2]=new() {Type=AtkValueType.UInt,UInt=command.Container};
+        values[1]=new() {Type=AtkValueType.Int,Int=command.RowIndex};
+        values[2]=default; // Native left-click keeps the unused third argument undefined.
+        if (!ExpertDeliveryNativeRows.StillMatches(addon,command.RowIndex,current.Key))
+        { trace.Wait("phase=Select, waiting=native source records changed before dispatch"); return; }
         SetPhase(Phase.Dialog); // Latch before the native request may finalize this window.
         Status=$"正在提交 {index} / {approved.Length} 件：{current.Name}（品级 {current.ItemLevel}）";
-        // Verified CN AddonGrandCompanySupplyList.ReceiveEvent left-click branch:
-        // Int(3), Int(inventory slot), UInt(inventory container), updateState=true.
-        // The native helper at RVA 0x670170 sets R9B=1 before jumping to FireCallback.
+        // Verified normal left-click: Int(1), Int(native record index), Undefined.
+        // Resolve that index by physical identity in the native record array, never by label.
+        // Command 3 is a right-click context-menu request and is intentionally not used.
         addon->FireCallback(3,values,command.UpdateState);
         trace.Emit("SelectDispatched",lastSelection);
     }
@@ -161,6 +165,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
     private void ConfirmDialog()
     {
         if (current == null) return;
+        if (ContextMenuOpen) throw new InvalidOperationException("出现装备右键菜单，未提交；详情见 /xllog。");
         var yesno = Get("SelectYesno");
         if (yesno != null)
         {
@@ -299,6 +304,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         return !h.IsNull && h.IsReady && h.IsVisible ? (AtkUnitBase*)h.Address : null;
     }
     private static bool Has(string name)=>Get(name)!=null;
+    private static bool ContextMenuOpen => Has("ContextMenu") || Has("ContextIconMenu") || Has("AddonContextSub");
     private void SetPhase(Phase value)
     {
         trace.Emit("Phase",$"from={phase}, to={value}, step={index+1}/{approved.Length}, target={Describe(current)}");

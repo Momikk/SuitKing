@@ -4,9 +4,11 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DalamudHome Condition="'$(DalamudHome)' == ''">$(APPDATA)/XIVLauncherCN/addon/Hooks/dev</DalamudHome>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../SuitKing/ExpertDeliveryNativeRows.cs" Link="ExpertDeliveryNativeRows.cs" />
     <Compile Include="../SuitKing/ExpertDeliveryTrace.cs" Link="ExpertDeliveryTrace.cs" />
     <Compile Include="../SuitKing/ExpertDeliverySubmitPolicy.cs" Link="ExpertDeliverySubmitPolicy.cs" />
     <Compile Include="../SuitKing/ExpertDeliveryPreviewPlan.cs" Link="ExpertDeliveryPreviewPlan.cs" />

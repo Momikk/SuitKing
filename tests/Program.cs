@@ -514,30 +514,54 @@ Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {Condition=29999}]),
     "A damaged conflict cannot enable automatic normalization");
 var sourceCoat = new ExpertDeliveryCandidate(new(21664,3202,13,false),"堕狱治愈棉甲",325,1400,"兵装库");
 var sourceNeck = new ExpertDeliveryCandidate(new(26496,3208,9,true),"中庸治愈项环",450,1638,"兵装库");
-var coatSelection=ExpertDeliverySubmitPolicy.SelectSource(sourceCoat,sourceCoat);
-Check(coatSelection.UpdateState,"The verified left-click callback requests a native UI state update");
-Check(coatSelection==new ExpertDeliverySourceSelection(3,13,3202),
-    "Captured shifted coat row selects its real inventory slot rather than renderer row one");
-Check(ExpertDeliverySubmitPolicy.SelectSource(sourceNeck,sourceNeck)==new ExpertDeliverySourceSelection(3,9,3208),
-    "Captured stale-pants case selects the HQ neck item independently of the old row still on screen");
-Check(ExpertDeliverySubmitPolicy.SelectSource(sourceCoat with {Name="同名装备"},sourceCoat with {Name="同名装备"})==coatSelection,
-    "Visible labels and same-name renderers cannot redirect a source selection");
-var secondCoat=sourceCoat with {Key=sourceCoat.Key with {Slot=14}};
-Check(ExpertDeliverySubmitPolicy.SelectSource(secondCoat,secondCoat)!=coatSelection,
-    "Separate same-name same-reward copies produce separate source identities");
+ExpertDeliveryRowIdentity[] freshNativeRows=[new(26496,3208,9),new(26431,3500,48),new(21664,3202,13)];
+var coatSelection=ExpertDeliverySubmitPolicy.SelectSource(sourceCoat,sourceCoat,freshNativeRows);
+Check(coatSelection==new ExpertDeliverySourceSelection(1,2,true),
+    "Delivery uses command one and the physical native record index, never context-menu command three");
+Check(ExpertDeliverySubmitPolicy.SelectSource(sourceNeck,sourceNeck,freshNativeRows).RowIndex==0,
+    "A stale pants label cannot shift the native neck-item selection");
+var reorderedRows=freshNativeRows.Reverse().ToArray();
+Check(ExpertDeliverySubmitPolicy.SelectSource(sourceCoat,sourceCoat,reorderedRows).RowIndex==0,
+    "A changed native sort order resolves to the new exact physical record");
+Check(ExpertDeliverySubmitPolicy.SelectSource(sourceCoat,sourceCoat,[new(21664,3202,14),new(21664,3202,13)]).RowIndex==1,
+    "Same-name same-reward copies are distinguished by slot before any native request");
 var bagSource=sourceCoat with {Key=new(41613,2,20,false)};
-Check(ExpertDeliverySubmitPolicy.SelectSource(bagSource,bagSource)==new ExpertDeliverySourceSelection(3,20,2),
-    "Bag selections retain container and slot order without adding an HQ item-ID offset");
-bool SourceSelectionRejected(ExpertDeliveryCandidate expected,ExpertDeliveryCandidate fresh)
-{ try { ExpertDeliverySubmitPolicy.SelectSource(expected,fresh); return false; } catch(InvalidOperationException) { return true; } }
-Check(SourceSelectionRejected(sourceCoat,secondCoat),"Moving a source requires a fresh approved preview");
-Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Key=sourceCoat.Key with {HighQuality=true}}),
-    "Replacing the NQ source with HQ cannot silently reuse the selected slot");
-Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Protected=true})
-    && SourceSelectionRejected(sourceCoat,sourceCoat with {Available=false}),
-    "Protected and unavailable fresh candidates cannot yield a native selection command");
-Check(SourceSelectionRejected(sourceCoat with {Key=sourceCoat.Key with {Slot=128}},sourceCoat with {Key=sourceCoat.Key with {Slot=128}}),
-    "Source slots outside the verified signed-byte native range are refused");
+Check(ExpertDeliverySubmitPolicy.SelectSource(bagSource,bagSource,[new(41613,2,20)]).RowIndex==0,
+    "Bag-source selection uses the same physical-identity mapping");
+bool SourceSelectionRejected(ExpertDeliveryCandidate expected,ExpertDeliveryCandidate fresh,IReadOnlyList<ExpertDeliveryRowIdentity> rows)
+{ try { ExpertDeliverySubmitPolicy.SelectSource(expected,fresh,rows); return false; } catch(InvalidOperationException) { return true; } }
+Check(SourceSelectionRejected(sourceCoat,sourceCoat,[new(21664,3202,14)]),"A missing source is never replaced by a neighbouring row");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat,[new(21664,3202,13),new(21664,3202,13)]),
+    "Ambiguous duplicate native physical records cannot authorize selection");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Key=sourceCoat.Key with {HighQuality=true}},freshNativeRows),
+    "Replacing NQ with HQ invalidates an approved source");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat with {Protected=true},freshNativeRows)
+    && SourceSelectionRejected(sourceCoat,sourceCoat with {Available=false},freshNativeRows),
+    "Protected or unavailable inventory never yields a selection command");
+Check(SourceSelectionRejected(sourceCoat,sourceCoat,[new(21665,3202,13)])
+    && SourceSelectionRejected(sourceCoat,sourceCoat,[new(21664,3205,13)]),
+    "Both item ID and container must match, not just a slot or display row");
+unsafe
+{
+    ExpertDeliveryNativeRows.Row* records=stackalloc ExpertDeliveryNativeRows.Row[2];
+    records[0]=new() {ItemId=3401,Container=3205,Slot=7};
+    records[1]=new() {ItemId=26496,Container=3208,Slot=9};
+    var nativeWindow=new ExpertDeliveryNativeRows.Window {Rows=records,Count=2};
+    var capturedRows=ExpertDeliveryNativeRows.Read(&nativeWindow)!;
+    Check(capturedRows[0]==new ExpertDeliveryRowIdentity(3401,3205,7),
+        "The native-record reader retains the newly reported pants source fields");
+    Check(ExpertDeliveryNativeRows.StillMatches(&nativeWindow,1,sourceNeck.Key),
+        "The pre-dispatch read verifies the exact live native record again");
+    records[1].Slot=10;
+    Check(!ExpertDeliveryNativeRows.StillMatches(&nativeWindow,1,sourceNeck.Key),
+        "A native source change between snapshot and dispatch prevents sending the request");
+    nativeWindow.Count=4097;
+    Check(ExpertDeliveryNativeRows.Read(&nativeWindow)==null,
+        "An invalid native-record count is refused before reading entries");
+    nativeWindow.Count=0;
+    Check(ExpertDeliveryNativeRows.Read(&nativeWindow)==null,
+        "An empty native table waits without guessing a visible row");
+}
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

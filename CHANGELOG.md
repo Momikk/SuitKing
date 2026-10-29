@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.35 — 2026-10-29
+
+· 修复点击提交误开装备右键菜单的问题，按原生来源记录定位提交目标。
+
+### English
+
+· Fix Submit opening an item context menu; resolve delivery targets from native source records.
+
 ## 0.1.0.34 — 2026-10-29
 
 · 筹备改用原生左键的装备来源定位，避免旧列表造成错选或中断，并移除额外滚动与行等待。
