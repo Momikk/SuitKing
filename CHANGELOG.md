@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.36 — 2026-10-29
+
+· 修复连续筹备时列表错位、选错装备并卡在奖励页的问题。
+
+### English
+
+· Fix shifted item selection and stalled reward dialogs during consecutive expert deliveries.
+
 ## 0.1.0.35 — 2026-10-29
 
 · 修复点击提交误开装备右键菜单的问题，按原生来源记录定位提交目标。

@@ -543,24 +543,39 @@ Check(SourceSelectionRejected(sourceCoat,sourceCoat,[new(21665,3202,13)])
     "Both item ID and container must match, not just a slot or display row");
 unsafe
 {
-    ExpertDeliveryNativeRows.Row* records=stackalloc ExpertDeliveryNativeRows.Row[2];
-    records[0]=new() {ItemId=3401,Container=3205,Slot=7};
-    records[1]=new() {ItemId=26496,Container=3208,Slot=9};
-    var nativeWindow=new ExpertDeliveryNativeRows.Window {Rows=records,Count=2};
-    var capturedRows=ExpertDeliveryNativeRows.Read(&nativeWindow)!;
-    Check(capturedRows[0]==new ExpertDeliveryRowIdentity(3401,3205,7),
-        "The native-record reader retains the newly reported pants source fields");
-    Check(ExpertDeliveryNativeRows.StillMatches(&nativeWindow,1,sourceNeck.Key),
-        "The pre-dispatch read verifies the exact live native record again");
-    records[1].Slot=10;
-    Check(!ExpertDeliveryNativeRows.StillMatches(&nativeWindow,1,sourceNeck.Key),
-        "A native source change between snapshot and dispatch prevents sending the request");
-    nativeWindow.Count=4097;
-    Check(ExpertDeliveryNativeRows.Read(&nativeWindow)==null,
-        "An invalid native-record count is refused before reading entries");
-    nativeWindow.Count=0;
-    Check(ExpertDeliveryNativeRows.Read(&nativeWindow)==null,
-        "An empty native table waits without guessing a visible row");
+    ExpertDeliveryNativeRows.Item* records=stackalloc ExpertDeliveryNativeRows.Item[5];
+    records[0]=new() {ItemId=34178,Container=3205,Slot=6,Tab=2,Possessed=0}; // already submitted
+    records[1]=new() {ItemId=34156,Container=1,Slot=28,Tab=2,Possessed=1};
+    records[2]=new() {ItemId=34670,Container=3205,Slot=8,Tab=2,Possessed=1};
+    records[3]=new() {ItemId=100,Container=1,Slot=3,Tab=0,Possessed=1}; // daily supply
+    records[4]=new() {ItemId=101,Container=1,Slot=4,Tab=2,Possessed=1,InGearset=1};
+    int* sorted=stackalloc int[5] {3,0,1,4,2};
+    var nativeAgent=new ExpertDeliveryNativeRows.Agent {Items=records,SortedIndices=sorted,Count=5,Tab=2,Filter=1};
+    var captured=ExpertDeliveryNativeRows.Read(&nativeAgent)!;
+    Check(captured.SequenceEqual(new ExpertDeliveryRowIdentity[] {new(34156,1,28),new(34670,3205,8)}),
+        "Native sorted projection skips submitted, daily and gearset records before numbering rows");
+    var claw=new ExpertDeliveryCandidate(new(34156,1,28,false),"异怪爪",520,1761,"物品栏");
+    Check(ExpertDeliverySubmitPolicy.SelectSource(claw,claw,captured).RowIndex==0,
+        "Captured step-ten regression selects claw row zero, not stale addon row one pointing to imperial pants");
+    Check(ExpertDeliveryNativeRows.StillMatches(&nativeAgent,captured),"An unchanged complete projection is safe to dispatch");
+    sorted[2]=2; sorted[4]=1;
+    Check(!ExpertDeliveryNativeRows.StillMatches(&nativeAgent,captured),"Sorting changed before dispatch invalidates the entire projection");
+    Check(ExpertDeliverySubmitPolicy.SelectSource(claw,claw,ExpertDeliveryNativeRows.Read(&nativeAgent)!).RowIndex==1,
+        "Selection follows native sorted order instead of raw agent storage order");
+    nativeAgent.Filter=0;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)!.Length==3,"Native show-all filter retains gearset rows for correct row numbering");
+    nativeAgent.Filter=2;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)!.Length==2,"Native inventory-only filter removes armory entries before numbering");
+    records[1].Excluded=1;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)!.Length==1,"Native excluded flag removes a row before numbering");
+    sorted[0]=5;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)==null,"Out-of-range sorted indices cannot read item memory");
+    sorted[0]=2;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)==null,"Duplicate sorted indices cannot produce a false row mapping");
+    nativeAgent.Count=4097;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)==null,"An invalid native count is refused before reading entries");
+    nativeAgent.Count=0;
+    Check(ExpertDeliveryNativeRows.Read(&nativeAgent)==null,"An empty agent waits without guessing a visible row");
 }
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });

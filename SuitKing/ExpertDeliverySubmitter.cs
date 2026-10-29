@@ -108,13 +108,14 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         var handle=Plugin.GameGui.GetAddonByName(ExpertDeliveryPreviewController.AddonName);
         if (handle.IsNull || !handle.IsReady || !handle.IsVisible) return;
         var addon=(AddonGrandCompanySupplyList*)handle.Address;
-        var nativeRows=ExpertDeliveryNativeRows.Read(addon);
-        if (nativeRows==null) { trace.Wait("phase=Select, waiting=native source records"); return; }
+        var agent=AgentGrandCompanySupply.Instance();
+        var nativeRows=ExpertDeliveryNativeRows.Read(agent);
+        if (nativeRows==null) { trace.Wait("phase=Select, waiting=agent sorted source projection"); return; }
         var command=ExpertDeliverySubmitPolicy.SelectSource(current,plan.Items[0],nativeRows);
         if (!Live(current)) throw new InvalidOperationException("装备已移动、穿戴或登记到职业配装。");
         before=Balance(out var capacity); hqConfirmed=false;
         trace.Emit("Target",$"step={index+1}/{approved.Length}, {Describe(current)}");
-        lastSelection=$"step={index+1}/{approved.Length}, target={Describe(current)}, route=NativeRecordLeftClick, command={command.EventKind}, nativeRow={command.RowIndex}, nativeCount={nativeRows.Length}, updateState={command.UpdateState}, seals={before}/{capacity}";
+        lastSelection=$"step={index+1}/{approved.Length}, target={Describe(current)}, route=AgentSortedLeftClick, command={command.EventKind}, nativeRow={command.RowIndex}, projectedCount={nativeRows.Length}, agentCount={agent->NumItems}, filter={((ExpertDeliveryNativeRows.Agent*)agent)->Filter}, updateState={command.UpdateState}, seals={before}/{capacity}";
         trace.Emit("SelectSource",lastSelection);
         lastRows=CaptureRows(addon); // Diagnostic only: cached row text never determines the source.
         trace.Emit("RowsBeforeClick",lastRows);
@@ -124,12 +125,13 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         values[0]=new() {Type=AtkValueType.Int,Int=command.EventKind};
         values[1]=new() {Type=AtkValueType.Int,Int=command.RowIndex};
         values[2]=default; // Native left-click keeps the unused third argument undefined.
-        if (!ExpertDeliveryNativeRows.StillMatches(addon,command.RowIndex,current.Key))
-        { trace.Wait("phase=Select, waiting=native source records changed before dispatch"); return; }
+        if (!ExpertDeliveryNativeRows.StillMatches(agent,nativeRows))
+        { trace.Wait("phase=Select, waiting=agent sorted source projection changed before dispatch"); return; }
         SetPhase(Phase.Dialog); // Latch before the native request may finalize this window.
         Status=$"正在提交 {index} / {approved.Length} 件：{current.Name}（品级 {current.ItemLevel}）";
-        // Verified normal left-click: Int(1), Int(native record index), Undefined.
-        // Resolve that index by physical identity in the native record array, never by label.
+        // Verified normal left-click: Int(1), Int(filtered agent row index), Undefined.
+        // Resolve physical identity through the SAME sorted indices and filters as the callback.
+        // The paged addon cache and its allocation capacity never determine selection.
         // Command 3 is a right-click context-menu request and is intentionally not used.
         addon->FireCallback(3,values,command.UpdateState);
         trace.Emit("SelectDispatched",lastSelection);
