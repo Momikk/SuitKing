@@ -32,6 +32,11 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
     private long before;
     private bool hqConfirmed;
     private string? error;
+    private ExpertDeliveryCandidate? lastCompleted;
+    private int refreshAttempts;
+    private bool restoreScrollPending;
+    private int restoreScrollPosition;
+    private nint refreshAddon;
     private CompletionItemKey? locating;
     private bool searchStarted;
     private int lastScroll;
@@ -46,6 +51,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         try
         {
             trace.Begin(); lastRows = "not captured"; lastSelection = "not dispatched";
+            lastCompleted=null; refreshAttempts=0; restoreScrollPending=false;
             trace.Emit("StartRequested",$"version={typeof(Plugin).Assembly.GetName().Version}, count={plan.Items.Count}, stopLevel={level}");
             if (!plugin.Delivery.ContextOpen || Has("GrandCompanySupplyReward") || Has("SelectYesno"))
                 throw new InvalidOperationException("请先关闭已有提交确认窗口。");
@@ -118,9 +124,20 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         if (locating != current.Key)
         {
             locating = current.Key; searchStarted = false; lastScroll = -1; locateAfter = 0;
+            refreshAttempts=0; restoreScrollPending=false;
             trace.ResetStep(); trace.Emit("Target",$"step={index+1}/{approved.Length}, {Describe(current)}");
         }
         if (Environment.TickCount64 < locateAfter) return;
+        if (restoreScrollPending)
+        {
+            restoreScrollPending=false;
+            if (refreshAddon==handle.Address && list->ScrollBarComponent!=null)
+                list->ScrollBarComponent->SetScrollPosition(Math.Clamp(restoreScrollPosition,0,list->ScrollBarComponent->ScrollMaxPosition));
+            rowGate.Reset(); locateAfter=Environment.TickCount64+180;
+            trace.Emit("RowsRefreshReturn",$"position={restoreScrollPosition}, sameAddon={refreshAddon==handle.Address}");
+            return;
+        }
+        var completedRows=new HashSet<int>();
         var rows = new List<ExpertDeliveryNativeRow>();
         var mapping = new List<string>();
         var diagnostics = new List<string>();
@@ -146,12 +163,35 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
                 if (ExpertDeliverySubmitPolicy.NameKey(text)==ExpertDeliverySubmitPolicy.NameKey(current.Name)) name=text;
                 if (int.TryParse(text.Replace(",",""),out var number) && number==current.SealReward) reward=number;
             }
+            if (lastCompleted!=null && texts.Any(text => ExpertDeliverySubmitPolicy.NameKey(text)==ExpertDeliverySubmitPolicy.NameKey(lastCompleted.Name))
+                && texts.Any(text => int.TryParse(text.Replace(",",""),out var number) && number==lastCompleted.SealReward))
+                completedRows.Add(renderer->ListItemIndex);
             mapping.Add($"{slot}:{renderer->ListItemIndex}:"+string.Join("|",texts));
             diagnostics.Add($"pool={slot}, row={renderer->ListItemIndex}, renderer=0x{(nint)renderer:X}, disabled={list->ItemRendererList[slot].IsDisabled}, text=[{string.Join("|",texts.Select(text => ExpertDeliveryTrace.Clean(text)))}]");
             if (name.Length>0) rows.Add(new(renderer->ListItemIndex,name,reward,!list->ItemRendererList[slot].IsDisabled));
         }
         var fingerprint=$"{handle.Address}:{list->ListLength}:{addon->SelectedSortBy}:{addon->SelectedFilter}:"+string.Join(";",mapping);
         lastRows = $"addon={addon->Id}/0x{handle.Address:X}, list=0x{(nint)list:X}, count={list->ListLength}, allocated={list->AllocatedItemRendererListLength}, sort={addon->SelectedSortBy}, filter={addon->SelectedFilter}, selected={list->SelectedItemIndex}, firstVisible={list->FirstVisibleItemIndex}, pendingFirst={list->PendingFirstVisibleItemIndex}, updatePending={list->IsUpdatePending}, scrollPending={list->IsScrollRefreshPending}; rows={string.Join("; ",diagnostics)}";
+        if (ExpertDeliverySubmitPolicy.HasStaleCompletedRow(completedRows.Count,lastCompleted,reader.Candidates))
+        {
+            trace.Wait($"phase=Select, waiting=acknowledged item still rendered, completed={Describe(lastCompleted)}, visibleCopies={completedRows.Count}; {lastRows}");
+            var scroll=list->ScrollBarComponent;
+            if (refreshAttempts>=2 || scroll==null || scroll->ScrollMaxPosition<=0)
+                throw new InvalidOperationException("原生列表仍显示已提交装备，已停止避免选错；请重新打开筹备页。");
+            // Recycle visible renderers via an ordinary scroll round trip. Never adjust the
+            // target index by subtraction, resubmit an item, or dismiss a mismatched prompt.
+            restoreScrollPosition=scroll->ScrollPosition;
+            var distance=Math.Max(1,(int)list->NumVisibleItems)*Math.Max(1,(int)list->ItemHeight);
+            var away=Math.Min(scroll->ScrollMaxPosition,restoreScrollPosition+distance);
+            if (away==restoreScrollPosition) away=Math.Max(0,restoreScrollPosition-distance);
+            refreshAttempts++; refreshAddon=handle.Address; restoreScrollPending=true;
+            trace.Emit("RowsRefresh",$"attempt={refreshAttempts}, from={restoreScrollPosition}, to={away}, completed={Describe(lastCompleted)}");
+            scroll->SetScrollPosition(away); rowGate.Reset(); locateAfter=Environment.TickCount64+180;
+            Status="正在刷新原生装备列表……";
+            return;
+        }
+        if (list->IsUpdatePending || list->IsScrollRefreshPending || list->PendingFirstVisibleItemIndex!=list->FirstVisibleItemIndex)
+        { rowGate.Reset(); trace.Wait("phase=Select, waiting=native row/scroll update"); return; }
         if (!rowGate.Observe(fingerprint,Environment.TickCount64))
         { Status=$"等待原生装备行刷新稳定：{current.Name}"; trace.Wait($"phase=Select, waiting=row mapping stability; {lastRows}"); return; }
         var selected=ExpertDeliverySubmitPolicy.FindNativeRow(rows,current.Name,current.SealReward,list->ListLength);
@@ -287,6 +327,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
         { trace.Wait($"phase=Result, target={Describe(current)}, sourceReadable={readable}, sourceMatches={sourceMatches}, seals={before}->{held}, expectedReward={current.SealReward}"); return; }
         if (!plugin.Delivery.ContextOpen) { trace.Wait("phase=Result, waiting=native list return after acknowledgement"); return; }
         trace.Emit("Acknowledged",$"step={index+1}/{approved.Length}, target={Describe(current)}, sourceReadable={readable}, sourceMatches={sourceMatches}, seals={before}->{held}, gained={held-before}");
+        lastCompleted=current;
         index++; current=null; reader.Reset(); rowGate.Reset(); SetPhase(Phase.Select);
     }
     private long Balance(out long max)

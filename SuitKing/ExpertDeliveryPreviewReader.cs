@@ -13,7 +13,8 @@ internal sealed unsafe class ExpertDeliveryPreviewReader
     private readonly GearsetSnapshotGate gate = new();
     internal long Held { get; private set; }
     internal long Maximum { get; private set; }
-    internal void Reset() => gate.Clear();
+    internal IReadOnlyList<ExpertDeliveryCandidate> Candidates { get; private set; } = [];
+    internal void Reset() { gate.Clear(); Candidates = []; }
     internal bool TryRead(int stopLevel, out ExpertDeliveryPreviewPlan? plan)
     {
         plan = null;
@@ -61,6 +62,7 @@ internal sealed unsafe class ExpertDeliveryPreviewReader
                 data.LevelItem.RowId, native.SealReward, location + $"·{native.Slot + 1}", data.Icon,
                 Available: native.TurnInAvailable != 0));
         }
+        Candidates = rows.ToArray(); // Complete fresh candidates, before cutoff/capacity truncation.
         plan = ExpertDeliveryPreviewPlan.Build(rows, stopLevel, held, maximum);
         return true;
     }

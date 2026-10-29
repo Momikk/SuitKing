@@ -27,6 +27,14 @@ internal static class ExpertDeliverySubmitPolicy
             .Select(row => row.Index).Distinct().ToArray();
         return matches.Length == 1 ? matches[0] : matches.Length == 0 ? -1 : -2;
     }
+    internal static bool HasStaleCompletedRow(int visibleCopies, ExpertDeliveryCandidate? completed,
+        IReadOnlyList<ExpertDeliveryCandidate> fresh)
+    {
+        if (completed==null || visibleCopies==0) return false;
+        var remaining=fresh.Count(item => NameKey(item.Name)==NameKey(completed.Name)
+            && item.SealReward==completed.SealReward);
+        return visibleCopies>remaining;
+    }
     internal static bool Acknowledged(bool sourceReadable, bool sourceStillPresent, bool dialogOpen,
         long before, long after, int reward)
         => sourceReadable && !sourceStillPresent && !dialogOpen && reward > 0 && after >= before

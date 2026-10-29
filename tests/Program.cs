@@ -533,6 +533,39 @@ Check(ExpertDeliveryTrace.Clean(new string('x',1000),10).Length<30,
 deliveryTrace.Begin(); deliveryTrace.Emit("Start","new batch");
 Check(traceInfo[^1].Contains("seq=1") && traceInfo[^1].Split(" seq=")[0]!=traceInfo[0].Split(" seq=")[0],
     "A restarted batch gets a fresh run ID and sequence");
+Check(QualityNormalizationPolicy.HasCandidate([nqShoe]),
+    "A usable NQ quality conflict enables normalization preview");
+Check(!QualityNormalizationPolicy.HasCandidate([]),"No quality conflicts leave normalization unavailable");
+Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {Assessment=new(OutfitStorageState.CanComplete,"")}]),
+    "Completable equipment does not light the quality-conflict button");
+Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {HighQuality=true}]),
+    "HQ source conflicts cannot start the NQ-source normalization flow");
+Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {RegisteredToGearset=true}])
+    && !QualityNormalizationPolicy.HasCandidate([nqShoe with {RegisteredToGearset=null}]),
+    "Protected or unconfirmed equipment does not enable quality normalization");
+Check(!QualityNormalizationPolicy.HasCandidate([nqShoe with {Condition=29999}]),
+    "A damaged conflict cannot enable automatic normalization");
+var completedCuffs = new ExpertDeliveryCandidate(new(14457,3209,14,false),"改良型蛮神治愈手镯",240,1230,"兵装库");
+var nextBoots = new ExpertDeliveryCandidate(new(17407,3206,30,false),"煽动兵精准长靴",245,1240,"兵装库");
+Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedCuffs,[nextBoots]),
+    "First captured failure: acknowledged cuffs still at row zero invalidate the boots row-one mapping");
+var completedPants = new ExpertDeliveryCandidate(new(19006,3205,25,true),"真狮鹫革精准马裤",320,1390,"兵装库");
+var nextCoat = new ExpertDeliveryCandidate(new(21664,3202,13,false),"堕狱治愈棉甲",325,1400,"兵装库");
+Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,[nextCoat]),
+    "Second captured failure: acknowledged HQ pants invalidate the stale NQ coat row-one mapping");
+Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(0,completedPants,[nextCoat]),
+    "Refreshed renderers with the completed item removed may pass the normal row gate");
+Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,
+    [completedPants with {Key=completedPants.Key with {Slot=26}},nextCoat]),
+    "A separate remaining physical copy is not mistaken for a removed renderer");
+Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(2,completedPants,
+    [completedPants with {Key=completedPants.Key with {Slot=26}},nextCoat]),
+    "More visible copies than live candidates still reveal an old renderer");
+Check(!ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,null,[nextCoat]),
+    "The first item of a new batch has no previous-acknowledgement restriction");
+Check(ExpertDeliverySubmitPolicy.HasStaleCompletedRow(1,completedPants,
+    [completedPants with {SealReward=1391},nextCoat]),
+    "A different-reward candidate cannot validate a previously submitted display row");
 if (args.Length == 0) return;
 using var game = new GameData(args[0], new LuminaOptions { DefaultExcelLanguage = Lumina.Data.Language.ChineseSimplified });
 var nativePrompts = game.Excel.GetSheet<Addon>(Lumina.Data.Language.ChineseSimplified)

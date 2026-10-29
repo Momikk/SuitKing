@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.0.33 — 2026-10-29
+
+· 修复无品质冲突时按钮仍可用的问题；连续筹备增加旧列表校验与刷新，避免选行错位。
+
+### English
+
+· Disable NQ conversion without eligible conflicts; validate and refresh stale delivery rows before selection.
+
 ## 0.1.0.32 — 2026-10-27
 
 · 完善筹备稀有品诊断日志，记录选行、确认、提交结果及停止原因。

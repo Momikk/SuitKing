@@ -10,6 +10,10 @@ internal enum QualityNormalizationPhase
 internal static class QualityNormalizationPolicy
 {
     internal const uint GlamourPrismId = 21800;
+    internal static bool HasCandidate(IEnumerable<OutfitEquipment> equipment)
+        => equipment.Any(item => !item.HighQuality && item.RegisteredToGearset == false
+            && item.Condition >= 30000 && item.Assessment?.State == OutfitStorageState.QualityConflict);
+
     private const ulong LowerQualityEventKind = 77;
     internal static bool CanConfirmLower(bool ownerMatches, uint addonId, uint blockingAddonId,
         CompletionItemKey expected, uint blockedContainer, int blockedSlot, bool sourceValid, bool nqProtected,

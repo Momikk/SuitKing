@@ -147,7 +147,8 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
             tabs!.IsVisible = !cabinet;
             qualityButton!.IsVisible = !cabinet;
             qualityButton.String = plugin.Quality.IsRunning ? "停止转 NQ" : "冲突转 NQ";
-            qualityButton.IsEnabled = plugin.Quality.IsRunning || (!running && plugin.IsDresserOpen && Ready);
+            qualityButton.IsEnabled = plugin.Quality.IsRunning || (!running && plugin.IsDresserOpen && Ready
+                && QualityNormalizationPolicy.HasCandidate(plugin.Inventory.Equipment));
             var count = OutfitDisplayFilter.Apply(plugin.Inventory.Equipment,plugin.Config.HideGearsetItems,"")
                 .Count(item => item.Assessment?.State == OutfitStorageState.NotCreated && item.Condition >= 30000);
             createButton!.IsVisible = !cabinet;
