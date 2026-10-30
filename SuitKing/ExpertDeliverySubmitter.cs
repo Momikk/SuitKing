@@ -52,6 +52,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             approved = plan.Items.ToArray(); index = 0; stopLevel = level; error = null; current = null;
             reader.Reset(); SetPhase(Phase.Select);
             Status = $"准备提交 {approved.Length} 件，停止品级 {stopLevel}。";
+            plugin.DeliveryPreview.SuspendForSubmission();
             trace.Emit("Start",$"count={approved.Length}, stopLevel={stopLevel}, company={company}, territory={territory}, seals={BalanceSnapshot()}, first={Describe(approved[0])}");
         }
         catch (Exception ex) { trace.Emit("StartRejected",ex.ToString(),true); plugin.DeliveryPreview.FinishSubmission(ex.Message); }
@@ -96,6 +97,7 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
     {
         if (!plugin.Delivery.ContextOpen || Has("SelectYesno") || Has("GrandCompanySupplyReward"))
             throw new InvalidOperationException("筹备页已改变或出现其他确认窗口。");
+        if (plugin.DeliveryPreview.IsAllocated) { trace.Wait("phase=Select, waiting=preview release"); return; }
         if (index >= approved.Length) { Stop("本次清单已提交完成。"); return; }
         if (!reader.TryRead(stopLevel,out var plan)) { trace.Wait("phase=Select, waiting=inventory/gearset snapshot"); return; }
         if (plan!.Items.Count == 0) { Stop(plan.StopReason); return; }

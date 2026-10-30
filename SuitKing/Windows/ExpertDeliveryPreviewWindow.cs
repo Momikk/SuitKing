@@ -18,7 +18,20 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     private ListNode<ExpertDeliveryCandidate, ExpertDeliveryPreviewRow>? list;
     private readonly List<TextNode> labels = [];
     private int lastLevel = 660;
-    internal void Present() { if (!IsAllocated) Open(); }
+    private bool submissionClose;
+    private bool restoreAfterSubmission;
+    private string? completionStatus;
+    internal void Present() { if (!IsAllocated && !plugin.Delivery.Submission.IsRunning) Open(); }
+    // The live CN client defers its reward page while this custom addon remains allocated.
+    // Release it before selecting equipment; retain Stop on the native supply window.
+    internal void SuspendForSubmission() { submissionClose=true; restoreAfterSubmission=true; completionStatus=null; Close(); }
+    internal void RestoreAfterSubmission()
+    {
+        if (!restoreAfterSubmission || IsAllocated || plugin.Delivery.Submission.IsRunning) return;
+        restoreAfterSubmission=false;
+        Present();
+    }
+    internal void CancelRestore() { restoreAfterSubmission=false; completionStatus=null; }
     protected override void OnSetup(AtkUnitBase* addon, Span<AtkValue> values)
     {
         var origin = ContentStartPosition;
@@ -59,7 +72,8 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
             FontSize = 12, AlignmentType = AlignmentType.Left, TextFlags = TextFlags.Ellipsis };
         AddNode(stop);
         Label("按品级升序排列；这是当前快照，装备变动后请重新生成。",ContentSize.Y-30);
-        SetStatus("输入停止品级，点击生成预览。");
+        SetStatus(completionStatus ?? "输入停止品级，点击生成预览。");
+        completionStatus=null;
     }
     internal void SetStatus(string value)
     {
@@ -89,11 +103,13 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     }
     internal void FinishSubmission(string status)
     {
-        SetStatus(status);
+        if (restoreAfterSubmission) completionStatus=status;
+        else SetStatus(status);
     }
     protected override void OnFinalize(AtkUnitBase* addon)
     {
-        plugin.Delivery.Submission.Stop("预览窗口已关闭。");
+        if (!submissionClose) plugin.Delivery.Submission.Stop("预览窗口已关闭。");
+        submissionClose=false;
         plugin.Delivery.CancelPending();
         approved = null;
         foreach (var node in labels) node.Dispose(); labels.Clear();

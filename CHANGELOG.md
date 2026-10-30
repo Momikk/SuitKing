@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.1.2 — 2026-10-30
+
+· 修复筹备预览窗口阻塞 HQ 奖励页的问题；提交时收起预览，结束后恢复，可在原生窗口停止。
+
+### English
+
+· Fix the preview blocking HQ delivery rewards; close it during delivery, restore it afterward, and keep Stop on the native window.
+
 ## 0.1.1.1 — 2026-10-30
 
 · 无可补齐装备时，自动补齐按钮置灰。

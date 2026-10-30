@@ -1,6 +1,6 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.1.1.1</Version>
+    <Version>0.1.1.2</Version>
     <Author>Momikk</Author>
     <Name>套装之王 SuitKing</Name>
     <Punchline>汇总物品栏和兵装库中支持套装幻影化的装备。</Punchline>

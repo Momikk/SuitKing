@@ -64,17 +64,19 @@ internal sealed unsafe class ExpertDeliveryPreviewController(Plugin plugin) : ID
             if (!handle.IsNull && handle.IsReady && handle.IsVisible && ContextOpen)
             {
                 if (wasContextOpen && contextCharacter != Plugin.Player.ContentId)
-                { pendingLevel = null; plugin.DeliveryPreview.Close(); }
+                { pendingLevel = null; plugin.DeliveryPreview.CancelRestore(); plugin.DeliveryPreview.Close(); }
                 wasContextOpen = true; contextCharacter = Plugin.Player.ContentId;
                 var addon = (AtkUnitBase*)handle.Address;
                 if (button == null && addon->RootNode != null)
                 {
                     button = new TextButtonNode { String = "筹备预览", Size = new(160, 28),
                         TextTooltip = "输入停止品级，先生成预览，再提交换取军票，固定排除职业配装。",
-                        OnClick = () => plugin.DeliveryPreview.Present() };
+                        OnClick = () => { if (Submission.IsRunning) Submission.Stop("已停止；已确认的提交仍可能完成。"); else plugin.DeliveryPreview.Present(); } };
                     try { button.AttachNode(addon); } catch { button.Dispose(); button = null; throw; }
                 }
-                if (button != null) { button.Position = new(400, 38); button.IsVisible = true; }
+                if (!NativeDialogOpen) plugin.DeliveryPreview.RestoreAfterSubmission();
+                if (button != null) { button.String=Submission.IsRunning ? "停止提交" : "筹备预览";
+                    button.TextTooltip=Submission.IsRunning ? Submission.Status : "输入停止品级，先生成预览，再提交换取军票，固定排除职业配装。"; button.Position = new(400, 38); button.IsVisible = true; }
             }
             else
             {
@@ -103,7 +105,7 @@ internal sealed unsafe class ExpertDeliveryPreviewController(Plugin plugin) : ID
     {
         pendingLevel = null;
         button?.Dispose(); button = null;
-        if (!Submission.WaitingForNative) { wasContextOpen = false; Submission.Stop("筹备界面已关闭。"); plugin.DeliveryPreview.Close(); }
+        if (!Submission.WaitingForNative && !NativeDialogOpen) { wasContextOpen = false; Submission.Stop("筹备界面已关闭。"); plugin.DeliveryPreview.Close(); }
     }
     public void Dispose()
     {
