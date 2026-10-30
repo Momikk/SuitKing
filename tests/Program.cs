@@ -551,6 +551,20 @@ unsafe
     records[4]=new() {ItemId=101,Container=1,Slot=4,Tab=2,Possessed=1,InGearset=1};
     int* sorted=stackalloc int[5] {3,0,1,4,2};
     var nativeAgent=new ExpertDeliveryNativeRows.Agent {Items=records,SortedIndices=sorted,Count=5,Tab=2,Filter=1};
+    nativeAgent.PendingAddon=132; nativeAgent.SelectedItem=1;
+    var pendingKey=new CompletionItemKey(34156,1,28,true);
+    Check(ExpertDeliveryNativeRows.PendingMatches(&nativeAgent,132,pendingKey),
+        "An HQ confirmation belongs to the current native pending source and addon");
+    Check(!ExpertDeliveryNativeRows.PendingMatches(&nativeAgent,133,pendingKey),
+        "A stale or replaced HQ addon cannot receive an automatic Yes result");
+    Check(!ExpertDeliveryNativeRows.PendingMatches(&nativeAgent,132,pendingKey with {Slot=27}),
+        "HQ ownership alone cannot authorize a different source slot");
+    nativeAgent.SelectedItem=-1;
+    Check(!ExpertDeliveryNativeRows.PendingMatches(&nativeAgent,132,pendingKey),
+        "A cancelled native selection cannot receive an automatic Yes result");
+    nativeAgent.SelectedItem=5;
+    Check(!ExpertDeliveryNativeRows.PendingMatches(&nativeAgent,132,pendingKey),
+        "An out-of-range pending selection cannot read native source memory");
     var captured=ExpertDeliveryNativeRows.Read(&nativeAgent)!;
     Check(captured.SequenceEqual(new ExpertDeliveryRowIdentity[] {new(34156,1,28),new(34670,3205,8)}),
         "Native sorted projection skips submitted, daily and gearset records before numbering rows");

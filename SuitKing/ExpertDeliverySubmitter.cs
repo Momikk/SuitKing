@@ -180,16 +180,23 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             var dialog=(AddonSelectYesno*)yesno;
             var text=dialog->PromptText==null ? "" : SeString.Parse(dialog->PromptText->NodeText.AsSpan()).TextValue;
             var live=Live(current);
-            var accepted=ExpertDeliverySubmitPolicy.IsHqPrompt(current.Key.HighQuality,owned,kind,text) && live;
-            trace.Dialog($"type=HQ, step={index+1}, addon={yesno->Id}, target={Describe(current)}, prompt={ExpertDeliveryTrace.Clean(text)}, mapped={mapped}, owner=0x{owner:X}, agent=0x{(nint)agent:X}, kind={kind}, owned={owned}, live={live}, accepted={accepted}, hqClickSent={hqConfirmed}, buttonEnabled={dialog->YesButton!=null && dialog->YesButton->IsEnabled}",!accepted);
+            var pending=ExpertDeliveryNativeRows.PendingMatches(agent,yesno->Id,current.Key);
+            var accepted=ExpertDeliverySubmitPolicy.IsHqPrompt(current.Key.HighQuality,owned,kind,text) && live && (hqConfirmed || pending);
+            trace.Dialog($"type=HQ, step={index+1}, addon={yesno->Id}, target={Describe(current)}, prompt={ExpertDeliveryTrace.Clean(text)}, mapped={mapped}, owner=0x{owner:X}, agent=0x{(nint)agent:X}, kind={kind}, owned={owned}, live={live}, pendingMatches={pending}, accepted={accepted}, hqClickSent={hqConfirmed}, buttonEnabled={dialog->YesButton!=null && dialog->YesButton->IsEnabled}",!accepted);
             if (!accepted)
                 throw new InvalidOperationException("出现不属于本次 HQ 装备的确认，已停止。");
             if (hqConfirmed) return; // Wait for the already-clicked prompt to finish closing.
             CheckCapacity();
             if (dialog->YesButton==null || !dialog->YesButton->IsEnabled) return;
-            hqConfirmed=true; // Never click the same HQ confirmation twice.
-            if (!ClickDeliveryButton(yesno,dialog->YesButton))
-                throw new InvalidOperationException("未找到 HQ 确认按钮事件。");
+            // SelectYesno::ReceiveEvent RVA 0x1129256 forwards Int(0) with updateState=true
+            // for its normal Yes button. Send that exact result after checking pending source;
+            // do not rely on synthetic button press state or resend a vanished prompt.
+            AtkValue response=new() {Type=AtkValueType.Int,Int=0};
+            hqConfirmed=true;
+            trace.Emit("HqConfirmDispatch",$"step={index+1}, addon={yesno->Id}, target={Describe(current)}, pendingMatches={pending}, response=Int(0), updateState=true, route=NativeYesResult");
+            yesno->FireCallback(1,&response,true);
+            var after=(ExpertDeliveryNativeRows.Agent*)agent;
+            trace.Emit("HqConfirmReturned",$"step={index+1}, pendingAddon={after->PendingAddon}, selectedItem={after->SelectedItem}, target={Describe(current)}");
             return;
         }
         var reward=(AddonGrandCompanySupplyReward*)Get("GrandCompanySupplyReward");

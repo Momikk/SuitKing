@@ -13,6 +13,8 @@ internal static unsafe class ExpertDeliveryNativeRows
         [FieldOffset(0x68)] internal Item* Items;
         [FieldOffset(0x70)] internal int* SortedIndices;
         [FieldOffset(0x78)] internal int Count;
+        [FieldOffset(0x80)] internal uint PendingAddon;
+        [FieldOffset(0x8C)] internal int SelectedItem;
         [FieldOffset(0x90)] internal ushort Tab;
         [FieldOffset(0x93)] internal byte Filter;
     }
@@ -51,6 +53,14 @@ internal static unsafe class ExpertDeliveryNativeRows
     // Exact container predicate called by the native filter (RVA 0x86C080).
     private static bool IsArmoury(uint container)
         => container is >=3200 and <=3209 or 3300 or 3400 or 3500;
+    internal static bool PendingMatches(void* address,uint addonId,CompletionItemKey key)
+    {
+        if (address==null || addonId==0) return false;
+        var agent=(Agent*)address;
+        return agent->Tab==2 && agent->PendingAddon==addonId && agent->Items!=null
+            && agent->Count is >0 and <=4096 && agent->SelectedItem>=0 && agent->SelectedItem<agent->Count
+            && ExpertDeliverySubmitPolicy.RowMatches(agent->Items[agent->SelectedItem].Identity,key);
+    }
     internal static bool StillMatches(void* address,IReadOnlyList<ExpertDeliveryRowIdentity> snapshot)
     {
         var fresh=Read(address);

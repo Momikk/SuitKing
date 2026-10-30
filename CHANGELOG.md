@@ -1,5 +1,15 @@
 # 更新记录
 
+## 0.1.1.1 — 2026-10-30
+
+· 无可补齐装备时，自动补齐按钮置灰。
+· 调整 HQ 筹备确认流程，增加待确认装备校验。
+
+### English
+
+· Disable Auto Complete when no eligible equipment remains.
+· Adjust HQ delivery confirmation and validate the pending equipment.
+
 ## 0.1.1.0 — 2026-10-30
 
 · 稀有品连续筹备修复经游戏内验证，版本推进至 0.1.1.0。
