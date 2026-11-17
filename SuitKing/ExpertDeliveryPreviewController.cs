@@ -53,6 +53,7 @@ internal sealed unsafe class ExpertDeliveryPreviewController(Plugin plugin) : ID
         deadline = Environment.TickCount64 + 5000;
         plugin.DeliveryPreview.SetStatus("正在读取筹备列表与职业配装过滤……");
     }
+    internal bool PreviewPending => pendingLevel.HasValue;
     internal void CancelPending() => pendingLevel = null;
     internal void Tick()
     {
@@ -81,17 +82,18 @@ internal sealed unsafe class ExpertDeliveryPreviewController(Plugin plugin) : ID
             else
             {
                 if (button != null) button.IsVisible = false;
-                pendingLevel = null;
+                if (PreviewPending) plugin.DeliveryPreview.SetStatus("筹备界面已关闭，请重新生成预览。");
+                CancelPending();
                 if (wasContextOpen && !Submission.WaitingForNative && !NativeDialogOpen)
                 { wasContextOpen = false; Submission.Stop("筹备界面已关闭。"); plugin.DeliveryPreview.Close(); }
             }
             if (pendingLevel is not { } level) return;
             if (Plugin.Player.ContentId != character || !ContextOpen) { CancelPending(); plugin.DeliveryPreview.Close(); return; }
             if (Environment.TickCount64 > deadline) throw new InvalidOperationException("读取超时，请重新生成预览。");
-            if (reader.TryRead(level, out var plan))
+            if (plugin.DeliveryPreview.CanShowPlan && reader.TryRead(level, out var plan))
             {
                 pendingLevel = null;
-                plugin.DeliveryPreview.ShowPlan(plan!);
+                plugin.DeliveryPreview.ShowPlan(plan!, level);
             }
         }
         catch (Exception error)

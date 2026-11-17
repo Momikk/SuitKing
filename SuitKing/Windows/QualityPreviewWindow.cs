@@ -10,6 +10,30 @@ namespace SuitKing.Windows;
 internal sealed unsafe class QualityPreviewWindow(Plugin plugin) : NativeAddon
 {
     private QualityNormalizationPlan? plan;
+    internal QualityNormalizationPlan? Preview => IsOpen ? plan : null;
+    internal string? PreviewId { get; private set; }
+
+    internal void ConfirmPreview()
+    {
+        var expected = plan;
+        if (expected is null || PreviewId is null) return;
+        PreviewId = null;
+        Close();
+        plugin.Quality.Confirm(expected);
+    }
+
+    internal void CancelPreview()
+    {
+        PreviewId = null;
+        plugin.Quality.Stop("已取消预览。");
+        Close();
+    }
+
+    public override void Close()
+    {
+        PreviewId = null;
+        base.Close();
+    }
     private readonly List<TextNode> labels = [];
     private TextButtonNode? confirm;
     private TextButtonNode? cancel;
@@ -18,6 +42,7 @@ internal sealed unsafe class QualityPreviewWindow(Plugin plugin) : NativeAddon
     {
         if (IsAllocated) return;
         plan = value;
+        PreviewId = Guid.NewGuid().ToString("N");
         // Header, seven-to-fourteen content rows, one compact button row and margins.
         Size = new(520, 92 + (value.PrismCount + 5) * 22);
         Open();
@@ -47,14 +72,15 @@ internal sealed unsafe class QualityPreviewWindow(Plugin plugin) : NativeAddon
         var buttonY = y + 12;
         var buttonX = (ContentSize.X - 346) / 2;
         confirm = new TextButtonNode { String = "确认转为 NQ 并存回", Position = origin + new Vector2(buttonX, buttonY),
-            Size = new(230, 28), OnClick = () => { var expected = plan; Close(); if (expected != null) plugin.Quality.Confirm(expected); } };
+            Size = new(230, 28), OnClick = ConfirmPreview };
         cancel = new TextButtonNode { String = "取消", Position = origin + new Vector2(buttonX + 246, buttonY),
-            Size = new(100, 28), OnClick = () => { plugin.Quality.Stop("已取消预览。"); Close(); } };
+            Size = new(100, 28), OnClick = CancelPreview };
         AddNode(confirm); AddNode(cancel);
     }
 
     protected override void OnFinalize(AtkUnitBase* addon)
     {
+        PreviewId = null;
         foreach (var node in labels) node.Dispose();
         labels.Clear(); confirm?.Dispose(); cancel?.Dispose(); confirm = cancel = null; plan = null;
     }

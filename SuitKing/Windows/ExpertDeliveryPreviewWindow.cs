@@ -13,6 +13,34 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     private TextButtonNode? preview;
     private TextButtonNode? submit;
     private ExpertDeliveryPreviewPlan? approved;
+    private ulong previewCharacter;
+    internal string? PreviewId { get; private set; }
+    internal ExpertDeliveryPreviewPlan? Preview => IsOpen && previewCharacter == Plugin.Player.ContentId ? approved : null;
+    internal bool CanShowPlan => IsOpen && summary != null;
+    internal string PreviewStatus { get; private set; } = "";
+    internal int PreviewStopLevel { get; private set; }
+
+    internal void SetStopLevel(int value)
+    {
+        lastLevel = value;
+        if (level != null && level.Value != value) level.Value = value;
+    }
+
+    internal void ConfirmPreview()
+    {
+        var plan = Preview;
+        if (PreviewId is null || plan is null) return;
+        PreviewId = null;
+        plugin.Delivery.Submission.Start(PreviewStopLevel, plan);
+    }
+
+    public override void Close()
+    {
+        PreviewId = null;
+        approved = null;
+        plugin.Delivery.CancelPending();
+        base.Close();
+    }
     private TextNode? summary;
     private TextNode? stop;
     private ListNode<ExpertDeliveryCandidate, ExpertDeliveryPreviewRow>? list;
@@ -52,7 +80,7 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
         submit = new TextButtonNode { String = "提交", Position = origin + new Vector2(502,26), Size = new(100,28),
             IsEnabled = false, TextTooltip = "将预览中的装备逐件换取军票；装备会被消耗，再次点击停止。",
             OnClick = () => { if (plugin.Delivery.Submission.IsRunning) plugin.Delivery.Submission.Stop("已停止；已确认的提交仍可能完成。");
-                else if (approved != null) plugin.Delivery.Submission.Start(lastLevel, approved); } };
+                else ConfirmPreview(); } };
         AddNode(submit);
         summary = new TextNode { Position = origin + new Vector2(0,62), Size = new(ContentSize.X,24), FontSize = 13, AlignmentType = AlignmentType.Left };
         AddNode(summary);
@@ -77,17 +105,23 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     }
     internal void SetStatus(string value)
     {
-        if (!IsAllocated || summary == null) return;
+        PreviewStatus = value;
+        PreviewId = null;
         approved = null;
+        if (!IsAllocated || summary == null) return;
         summary.String = value;
         if (submit != null) submit.IsEnabled = false;
         if (list != null) { list.OptionsList = []; list.NoResultsTextNode.String = value; }
         if (stop != null) stop.String = "";
     }
-    internal void ShowPlan(ExpertDeliveryPreviewPlan value)
+    internal void ShowPlan(ExpertDeliveryPreviewPlan value, int stopLevel)
     {
         if (!IsAllocated || list == null || summary == null || stop == null) return;
         approved = value;
+        PreviewStopLevel = stopLevel;
+        previewCharacter = Plugin.Player.ContentId;
+        PreviewId = Guid.NewGuid().ToString("N");
+        PreviewStatus = "";
         list.OptionsList = value.Items.ToList();
         list.NoResultsTextNode.String = "没有拟提交的装备。";
         summary.String = $"拟提交 {value.Items.Count} 件 · 预计获得 {value.Items.Sum(item => (long)item.SealReward):N0} 军票 · 预计余额 {value.SealsAfter:N0}";
@@ -103,6 +137,7 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     }
     internal void FinishSubmission(string status)
     {
+        PreviewStatus = status;
         if (restoreAfterSubmission) completionStatus=status;
         else SetStatus(status);
     }
@@ -110,6 +145,7 @@ internal sealed unsafe class ExpertDeliveryPreviewWindow(Plugin plugin) : Native
     {
         if (!submissionClose) plugin.Delivery.Submission.Stop("预览窗口已关闭。");
         submissionClose=false;
+        PreviewId = null;
         plugin.Delivery.CancelPending();
         approved = null;
         foreach (var node in labels) node.Dispose(); labels.Clear();

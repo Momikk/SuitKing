@@ -35,6 +35,12 @@ public sealed class Plugin : IAsyncDalamudPlugin
     private bool selectionWasOpen;
     private string? lastError;
     private bool isDisposing;
+    private SuitKingIpc? ipc;
+
+    internal NativeMainWindow MainWindow => mainWindow;
+    internal bool IsDisposing => isDisposing;
+    internal bool HasRunningJob => Completion.IsRunning || CabinetStore.IsRunning || Creation.IsRunning
+        || Quality.IsRunning || Delivery.Submission.IsRunning;
 
     internal OutfitInventoryReader Inventory { get; } = new();
     internal Configuration Config { get; }
@@ -77,6 +83,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
             CommandsAdd("/sking");
             PluginInterface.UiBuilder.OpenMainUi += OpenMainUi;
             Framework.Update += OnFrameworkUpdate;
+            ipc = new SuitKingIpc(this);
+            ipc.Register();
             Log.Information("SuitKing native UI loaded (API {ApiLevel}).", PluginInterface.Manifest.DalamudApiLevel);
         });
     }
@@ -89,6 +97,8 @@ public sealed class Plugin : IAsyncDalamudPlugin
         isDisposing = true;
         await Framework.Run(() =>
         {
+            ipc?.Dispose();
+            ipc = null;
             if (Completion.IsRunning) Completion.Stop("插件已禁用。");
             if (CabinetStore.IsRunning) CabinetStore.Stop("插件已禁用。");
             if (Quality.IsRunning) Quality.Stop("插件已禁用。");
@@ -180,6 +190,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
     }
 
     internal void RequestRefresh() => nextScan = 0;
+    internal void SetHideGearsetItems(bool value)
+    {
+        if (Config.HideGearsetItems == value) return;
+        Config.HideGearsetItems = value;
+        SaveConfiguration();
+    }
+
     internal void SaveConfiguration() => PluginInterface.SavePluginConfig(Config);
     private void OnCommand(string command, string args) => QueueWindowAction(window =>
     {

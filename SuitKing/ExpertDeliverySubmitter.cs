@@ -55,7 +55,16 @@ internal sealed unsafe class ExpertDeliverySubmitter(Plugin plugin)
             plugin.DeliveryPreview.SuspendForSubmission();
             trace.Emit("Start",$"count={approved.Length}, stopLevel={stopLevel}, company={company}, territory={territory}, seals={BalanceSnapshot()}, first={Describe(approved[0])}");
         }
-        catch (Exception ex) { trace.Emit("StartRejected",ex.ToString(),true); plugin.DeliveryPreview.FinishSubmission(ex.Message); }
+        catch (Exception ex)
+        {
+            trace.Emit("StartRejected", ex.ToString(), true);
+            if (IsRunning) Stop(ex.Message);
+            else
+            {
+                Status = ex.Message;
+                plugin.DeliveryPreview.FinishSubmission(Status);
+            }
+        }
     }
     internal void Stop(string reason)
     {

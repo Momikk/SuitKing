@@ -38,6 +38,19 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
         if (tabs is not null) SelectDefaultTab();
     }
 
+    internal string SelectedCategory => selectedState?.ToString() ?? "All";
+
+    internal bool SelectCategory(string name)
+    {
+        var index = Array.FindIndex(Categories, category => (category.State?.ToString() ?? "All") == name);
+        if (index < 0 || plugin.IsCabinetOpen) return false;
+        selectedState = Categories[index].State;
+        dirty = true;
+        list?.ResetScroll();
+        SelectDefaultTab();
+        return true;
+    }
+
     internal void TickPendingOpen()
     {
         if (!pendingOpen || IsAllocated) return;
@@ -61,8 +74,7 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
             Position = origin, Size = new Vector2(160, 24),
             OnClick = value =>
             {
-                plugin.Config.HideGearsetItems = value;
-                plugin.SaveConfiguration();
+                plugin.SetHideGearsetItems(value);
                 dirty = true;
             }
         };
@@ -148,6 +160,8 @@ internal sealed unsafe class NativeMainWindow(Plugin plugin) : NativeAddon
             completeButton.IsEnabled = actionRunning || (!running && Ready && hasCandidates
                 && (cabinet ? plugin.IsCabinetStoreOpen : plugin.IsDresserOpen));
             hideCheckbox!.IsVisible = !cabinet;
+            if (hideCheckbox.IsChecked != plugin.Config.HideGearsetItems)
+                hideCheckbox.IsChecked = plugin.Config.HideGearsetItems;
             hideCheckbox.IsEnabled = !running;
             tabs!.IsVisible = !cabinet;
             qualityButton!.IsVisible = !cabinet;

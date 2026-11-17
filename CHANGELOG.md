@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.1.1.3 — 2026-11-17
+
+· 新增插件联动 IPC，支持查看装备与进度、补齐和建立套装、收藏柜收纳、品质转换和筹备稀有品。
+
+### English
+
+· Add IPC for equipment and progress queries, outfit completion and creation, cabinet storage, quality conversion, and expert delivery.
+
 ## 0.1.1.2 — 2026-10-30
 
 · 修复筹备预览窗口阻塞 HQ 奖励页的问题；提交时收起预览，结束后恢复，可在原生窗口停止。
